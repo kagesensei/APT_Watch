@@ -351,5 +351,9 @@
       });
   });
 
+  // The suggestion buttons in the server-rendered HTML are static markup with
+  // no listeners attached — replace them with the JS-generated version (same
+  // content) via renderMessages(), which does wire up click handlers.
+  renderMessages();
   renderSidebar();
 })();
