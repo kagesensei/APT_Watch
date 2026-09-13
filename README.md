@@ -97,6 +97,31 @@ lives under the **Library** dropdown in the nav bar, at `/library/...`:
 only. Custom error pages are included for 400, 403, 404, 405, and 500
 responses (plus a generic fallback for any other HTTP error).
 
+## Dashboard
+
+The **Dashboard** page (`/dashboard`) is a situational snapshot of the threat
+terrain — not a chat answer, not a single-entity browse page, a landing view
+for "what does the data look like right now":
+
+- Stat tiles: total actors, techniques, software, mitigations, KEV CVEs, IOC
+  indicators, and the **crosswalk coverage** figure — what fraction of KEV
+  CVEs actually resolve to an ATT&CK technique via the CWE→CAPEC crosswalk.
+  This is the same data-quality signal used throughout chat, surfaced here as
+  an ongoing metric rather than a one-off fact.
+- Three ranking charts: top techniques by actor count, most active actors (by
+  distinct technique count), and top software by actor count.
+- A weekly stacked chart of KEV additions, split ransomware-linked vs. not.
+
+Charts are hand-built inline SVG (`app/charts.py`) — no external charting
+library, keeping the app self-contained. Colors follow the `dataviz` skill's
+method: the three ranking charts use one sequential hue (the app's existing
+`--accent` teal, not subject to categorical rules since it's a single series);
+the 2-series weekly chart uses two categorical hues from the skill's
+documented default palette, chosen in fixed order and validated with
+`scripts/validate_palette.js` against this app's dark surface before use —
+not eyeballed. Every chart has a native per-bar/segment tooltip (SVG
+`<title>`) and an accessible "View as table" fallback with the same data.
+
 ## Chat
 
 The home page answers free-text questions — "What's a concerning CVE being
@@ -236,6 +261,8 @@ a local dev app right now.
   - `routes.py` (mounted at `/library`), `templates/*.html` (excl. `chat.html`, `scan.html`) — the browsing UI, including the CVE list/detail pages
   - `chat.py` (mounted at `/`) — the chat home page, `/ask` API, and the `/api/chats/*` saved-chat CRUD API
   - `scan.py` (mounted at `/scan`) — the IOC file-scan page and `/scan/upload` API
+  - `dashboard.py` (mounted at `/dashboard`), `templates/dashboard.html` — the Threat Terrain dashboard
+  - `charts.py` — dependency-free inline-SVG chart builders for the dashboard
   - `nlp.py` — entity extraction for chat and the scan page (CVE/technique/mitigation IDs, actor/software fuzzy matching, hash/IP/URL indicators)
   - `intel.py` — fact retrieval + source citation for chat, the CVE Library page, and IOC lookups (the only module that queries the DB for facts)
   - `llm.py` — local LLM loading, prompting, the fabricated-ID guard, and per-category context budgeting

@@ -42,6 +42,10 @@ def create_app():
 
     app.register_blueprint(scan_bp)
 
+    from .dashboard import bp as dashboard_bp
+
+    app.register_blueprint(dashboard_bp)
+
     app.register_blueprint(auth_module.bp)
 
     register_error_handlers(app)

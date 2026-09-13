@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - APT_Watch{% endblock %}
+{% block container_class %}container-wide{% endblock %}
+{% block content %}
+<h1>Threat Terrain</h1>
+<p class="lede">A situational snapshot of the current data: MITRE ATT&amp;CK activity, actively-exploited CVEs, and how much of that CVE activity actually resolves to a known technique.</p>
+
+<div class="stat-grid">
+  <a class="stat-card" href="{{ url_for('main.actors') }}">
+    <span class="stat-value">{{ counts.actors }}</span>
+    <span class="stat-label">Actors</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('main.techniques') }}">
+    <span class="stat-value">{{ counts.techniques }}</span>
+    <span class="stat-label">Techniques</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('main.software') }}">
+    <span class="stat-value">{{ counts.software }}</span>
+    <span class="stat-label">Software</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('main.mitigations') }}">
+    <span class="stat-value">{{ counts.mitigations }}</span>
+    <span class="stat-label">Mitigations</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('main.cves') }}">
+    <span class="stat-value">{{ counts.cves }}</span>
+    <span class="stat-label">KEV CVEs</span>
+  </a>
+  <span class="stat-card">
+    <span class="stat-value">{{ counts.iocs }}</span>
+    <span class="stat-label">IOC indicators</span>
+  </span>
+  <span class="stat-card">
+    <span class="stat-value">{{ coverage_pct }}%</span>
+    <span class="stat-label">CVEs with a resolved TTP</span>
+  </span>
+</div>
+<p class="meta">Crosswalk coverage: {{ coverage_resolved }} of {{ coverage_total }} KEV CVEs resolve to at least one ATT&amp;CK technique via the CWE&rarr;CAPEC crosswalk — the rest have no technique mapping in the available data (a real coverage gap, not a bug).</p>
+
+<div class="dashboard-grid">
+  <div class="chart-card">
+    <h2>Top techniques by actor count</h2>
+    {{ chart_techniques | safe }}
+    <details class="chart-table-details">
+      <summary>View as table</summary>
+      <table class="data-table">
+        <thead><tr><th>Technique</th><th>Actors</th></tr></thead>
+        <tbody>
+          {% for label, value in top_techniques %}
+          <tr><td>{{ label }}</td><td>{{ value }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </div>
+
+  <div class="chart-card">
+    <h2>Most active actors</h2>
+    {{ chart_actors | safe }}
+    <details class="chart-table-details">
+      <summary>View as table</summary>
+      <table class="data-table">
+        <thead><tr><th>Actor</th><th>Techniques used</th></tr></thead>
+        <tbody>
+          {% for label, value in top_actors %}
+          <tr><td>{{ label }}</td><td>{{ value }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </div>
+
+  <div class="chart-card">
+    <h2>Top software by actor count</h2>
+    {{ chart_software | safe }}
+    <details class="chart-table-details">
+      <summary>View as table</summary>
+      <table class="data-table">
+        <thead><tr><th>Software</th><th>Actors</th></tr></thead>
+        <tbody>
+          {% for label, value in top_software %}
+          <tr><td>{{ label }}</td><td>{{ value }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </div>
+</div>
+
+<div class="chart-card chart-card-wide">
+  <h2>KEV additions by week</h2>
+  {{ chart_weekly | safe }}
+</div>
+{% endblock %}
