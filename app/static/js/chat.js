@@ -2,6 +2,8 @@
   const log = document.getElementById("chat-log");
   const form = document.getElementById("chat-form");
   const input = document.getElementById("chat-input");
+  const history = [];
+  const HISTORY_LIMIT = 6;
 
   function removeSuggestions() {
     const el = log.querySelector(".chat-suggestions");
@@ -56,7 +58,7 @@
     fetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message }),
+      body: JSON.stringify({ message: message, history: history }),
     })
       .then(function (resp) {
         return resp.json().then(function (data) {
@@ -71,6 +73,8 @@
         }
         pending.textContent = result.data.answer;
         addSources(result.data.sources);
+        history.push(message);
+        if (history.length > HISTORY_LIMIT) history.shift();
       })
       .catch(function () {
         pending.textContent = "Error: could not reach the server.";

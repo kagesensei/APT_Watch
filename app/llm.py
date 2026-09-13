@@ -2,6 +2,7 @@ import ctypes
 import importlib.util
 import os
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -80,9 +81,54 @@ Answer the user's question using ONLY the facts listed below. Each fact is tagge
   computed. When you use a DERIVED fact, tell the user explicitly that it's an inferred
   correlation, not a confirmed direct relationship.
 
+Never write a CVE, CWE, CAPEC, technique (T####), mitigation (M####), or group (G####) ID
+that does not appear verbatim in the facts below, even as a guess or example — an invented
+ID that looks plausible is worse than saying you don't know one.
+
 If the facts below do not answer the question, say plainly that you don't have that
 information in the data available — do not guess, and do not use any knowledge beyond
 the facts listed. Keep your answer concise and actionable."""
+
+# Regexes for the ID guardrail below: any of these patterns appearing in the
+# model's answer must also appear somewhere in the facts it was given, or the
+# model has fabricated an identifier despite the system prompt telling it not
+# to (observed in testing with this model on abliterated 8B checkpoints).
+ID_PATTERNS = [
+    re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE),
+    re.compile(r"CWE-\d+", re.IGNORECASE),
+    re.compile(r"CAPEC-\d+", re.IGNORECASE),
+    re.compile(r"\bT\d{4}(?:\.\d{3})?\b"),
+    re.compile(r"\bM\d{4}\b"),
+    re.compile(r"\bG\d{4}\b"),
+]
+
+
+def _ids_in_text(text):
+    ids = set()
+    for pattern in ID_PATTERNS:
+        ids.update(m.upper() for m in pattern.findall(text))
+    return ids
+
+
+def _allowed_ids(facts):
+    allowed = set()
+    for f in facts:
+        allowed.add(f["source"]["id"].upper())
+        allowed.update(_ids_in_text(f["text"]))
+    return allowed
+
+
+def _check_for_fabricated_ids(reply, facts):
+    unverified = _ids_in_text(reply) - _allowed_ids(facts)
+    if not unverified:
+        return reply
+    return (
+        reply
+        + "\n\n⚠️ Verification warning: this answer mentioned "
+        + ", ".join(sorted(unverified))
+        + " — that identifier was NOT found in the retrieved data. Treat that "
+        "specific claim as unverified; it may be fabricated."
+    )
 
 
 def build_context(facts):
@@ -116,4 +162,5 @@ def answer(question, facts):
         {"role": "user", "content": f"FACTS:\n{context}\n\nQUESTION: {question}"},
     ]
     result = llm.create_chat_completion(messages=messages, temperature=0.2, max_tokens=512)
-    return result["choices"][0]["message"]["content"].strip()
+    reply = result["choices"][0]["message"]["content"].strip()
+    return _check_for_fabricated_ids(reply, facts)

@@ -12,16 +12,34 @@ def index():
     return render_template("chat.html")
 
 
+def _has_any_entity(entities):
+    return bool(
+        entities["cves"] or entities["techniques"] or entities["mitigations"]
+        or entities["actors"] or entities["software"]
+    )
+
+
 @bp.route("/ask", methods=["POST"])
 def ask():
     data = request.get_json(silent=True) or {}
     message = (data.get("message") or "").strip()
+    history = data.get("history") or []
     if not message:
         return jsonify({"error": "Message is required."}), 400
 
     db = get_db()
     cache_db = get_cache_db()
     entities = nlp.extract_entities(message, db)
+
+    # A follow-up like "what mitigates this CVE?" names no entity of its own —
+    # re-run extraction against recent turns + this message so references back
+    # to something already discussed (a CVE ID mentioned two messages ago, say)
+    # still resolve, without letting old context override a genuinely new topic.
+    if not _has_any_entity(entities) and history:
+        contextual_text = " ".join(str(h) for h in history[-3:]) + " " + message
+        contextual_entities = nlp.extract_entities(contextual_text, db)
+        if _has_any_entity(contextual_entities):
+            entities = contextual_entities
 
     facts = []
     for cve_id in entities["cves"]:
