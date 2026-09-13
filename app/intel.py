@@ -108,6 +108,32 @@ def fetch_nvd(cve_id, cache_db):
     }
 
 
+def lookup_recent_kev(db, limit=8):
+    """For open-ended questions with no specific CVE named ("what's concerning
+    right now?"). Surfaces the most recently added KEV entries, prioritizing
+    ones with known ransomware use, so the model has something concrete and
+    current to summarize instead of nothing.
+    """
+    rows = db.execute(
+        "SELECT cve_id, vendor_project, product, vulnerability_name, date_added, known_ransomware "
+        "FROM kev ORDER BY (known_ransomware = 'Known') DESC, date_added DESC LIMIT ?",
+        [limit],
+    ).fetchall()
+
+    facts = []
+    for cve_id, vendor, product, name, date_added, ransomware in rows:
+        facts.append({
+            "text": (
+                f"{cve_id} ({name}; affects {vendor} {product}) was added to CISA's Known "
+                f"Exploited Vulnerabilities catalog on {date_added}, meaning it is confirmed "
+                f"to be actively exploited in the wild. Known ransomware use: {ransomware}."
+            ),
+            "derived": False,
+            "source": {"dataset": "CISA KEV", "id": cve_id, "name": name, "url": KEV_CATALOG_URL},
+        })
+    return facts, dedup_sources(facts)
+
+
 def lookup_cve(cve_id, db, cache_db):
     facts = []
 

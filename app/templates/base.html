@@ -8,13 +8,19 @@
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="{{ url_for('main.index') }}">APT_Watch</a>
+    <a class="brand" href="{{ url_for('chat.index') }}">APT_Watch</a>
     <nav>
-      <a href="{{ url_for('main.actors') }}">Actors</a>
-      <a href="{{ url_for('main.techniques') }}">Techniques</a>
-      <a href="{{ url_for('main.software') }}">Software</a>
-      <a href="{{ url_for('main.mitigations') }}">Mitigations</a>
       <a href="{{ url_for('chat.index') }}">Chat</a>
+      <div class="nav-dropdown">
+        <button type="button" class="nav-dropdown-toggle">Library &#9662;</button>
+        <div class="nav-dropdown-menu">
+          <a href="{{ url_for('main.index') }}">Overview</a>
+          <a href="{{ url_for('main.actors') }}">Actors</a>
+          <a href="{{ url_for('main.techniques') }}">Techniques</a>
+          <a href="{{ url_for('main.software') }}">Software</a>
+          <a href="{{ url_for('main.mitigations') }}">Mitigations</a>
+        </div>
+      </div>
     </nav>
   </header>
   <main class="container">
@@ -23,6 +29,20 @@
   <footer class="site-footer">
     <span>Data from <a href="https://attack.mitre.org/" target="_blank" rel="noopener">MITRE ATT&amp;CK</a></span>
   </footer>
+  <script>
+    (function () {
+      var dropdown = document.querySelector(".nav-dropdown");
+      var toggle = document.querySelector(".nav-dropdown-toggle");
+      if (!dropdown || !toggle) return;
+      toggle.addEventListener("click", function (e) {
+        e.stopPropagation();
+        dropdown.classList.toggle("open");
+      });
+      document.addEventListener("click", function (e) {
+        if (!dropdown.contains(e.target)) dropdown.classList.remove("open");
+      });
+    })();
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

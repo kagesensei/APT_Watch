@@ -2,7 +2,7 @@ from flask import Blueprint, abort, render_template, request
 
 from .db import get_db
 
-bp = Blueprint("main", __name__)
+bp = Blueprint("main", __name__, url_prefix="/library")
 
 PAGE_SIZE = 50
 

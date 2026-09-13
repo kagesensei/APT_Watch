@@ -68,7 +68,9 @@ Once `data/cti.duckdb` exists, run the Flask app:
 python main.py
 ```
 
-Then open http://127.0.0.1:5000/. The interface lets you browse and search:
+Then open http://127.0.0.1:5000/ — **Chat is the home page.** Everything else
+(Actors, Techniques, Software, Mitigations, and an Overview dashboard) lives
+under the **Library** dropdown in the nav bar, at `/library/...`:
 
 - **Actors** — ATT&CK groups, their aliases, techniques used, and software used
 - **Techniques** — which actors use each technique and which mitigations apply to it
@@ -81,12 +83,17 @@ responses (plus a generic fallback for any other HTTP error).
 
 ## Chat
 
-The **Chat** page (`/chat`) answers free-text questions — "What TTPs exploit
-CVE-2024-XXXX?", "What mitigates T1055?", "Is APT29 still active?" — using a
-local LLM that is restricted to facts pulled from `data/cti.duckdb` plus a
-live NVD lookup for the specific CVE asked about. It does not answer from the
+The home page answers free-text questions — "What's a concerning CVE being
+actively exploited right now?", "What TTPs exploit CVE-2024-3400 and how do I
+mitigate it?", "What mitigates T1055?", "What techniques does APT29 use?" —
+using a local LLM restricted to facts pulled from `data/cti.duckdb` plus a
+live NVD lookup for any specific CVE named. It does not answer from the
 model's own training knowledge: if nothing relevant is in the database, it
-says so instead of guessing.
+says so instead of guessing. Open-ended questions that don't name a specific
+CVE/technique/actor (anything matching a "concerning/recent/critical/active/..."
+keyword gate in `app/nlp.py`) fall back to the most notable current entries in
+the CISA KEV catalog (`intel.lookup_recent_kev`) so the chat has something
+concrete to reason about instead of always saying "no data."
 
 Pipeline for each question (see `app/nlp.py`, `app/intel.py`, `app/llm.py`,
 `app/chat.py`):
@@ -145,11 +152,12 @@ never needs write access) are both gitignored.
 - `resolve/aliases.py` — actor alias resolution across sources (not yet implemented)
 - `model/schema.sql` — full schema reference for both database files
 - `app/` — Flask application:
-  - `routes.py`, `templates/*.html` (excl. `chat.html`) — the browsing UI
+  - `routes.py` (mounted at `/library`), `templates/*.html` (excl. `chat.html`) — the browsing UI
+  - `chat.py` (mounted at `/`) — the chat home page and `/ask` API
   - `nlp.py` — entity extraction for chat
   - `intel.py` — fact retrieval + source citation for chat (the only module that queries the DB for chat)
   - `llm.py` — local LLM loading and prompting
-  - `chat.py`, `templates/chat.html`, `static/js/chat.js` — the chat UI/API
+  - `templates/chat.html`, `static/js/chat.js` — the chat page's markup/JS
   - `db.py`, `cache.py` — read-only main DB connection, writable NVD cache connection
 - `main.py` — Flask app entry point
 - `models/` — local GGUF model files (gitignored)

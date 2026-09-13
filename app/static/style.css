@@ -42,12 +42,58 @@ a:hover { text-decoration: underline; }
 }
 .brand:hover { text-decoration: none; color: var(--accent); }
 
+.site-header nav {
+  display: flex;
+  align-items: center;
+}
+
 .site-header nav a {
   margin-left: 1.25rem;
   color: var(--text-dim);
   font-weight: 500;
 }
 .site-header nav a:hover { color: var(--accent); text-decoration: none; }
+
+.nav-dropdown {
+  position: relative;
+  margin-left: 1.25rem;
+}
+
+.nav-dropdown-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+.nav-dropdown-toggle:hover { color: var(--accent); }
+
+.nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.6rem);
+  min-width: 160px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+
+.nav-dropdown.open .nav-dropdown-menu { display: flex; }
+.nav-dropdown-menu { flex-direction: column; }
+
+.nav-dropdown-menu a {
+  margin-left: 0 !important;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.nav-dropdown-menu a:hover { background: rgba(79, 209, 197, 0.08); text-decoration: none; }
 
 .container {
   max-width: 960px;
@@ -219,6 +265,33 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 10px;
 }
+
+.chat-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: auto 0;
+}
+
+.chat-suggestions-title {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chat-suggestion {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 0.8rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-align: left;
+}
+.chat-suggestion:hover { border-color: var(--accent-dim); color: var(--accent); }
 
 .chat-message {
   padding: 0.6rem 0.9rem;

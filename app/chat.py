@@ -4,7 +4,7 @@ from . import intel, llm, nlp
 from .cache import get_cache_db
 from .db import get_db
 
-bp = Blueprint("chat", __name__, url_prefix="/chat")
+bp = Blueprint("chat", __name__)
 
 
 @bp.route("/")
@@ -36,6 +36,17 @@ def ask():
     for stix_id, name, _score in entities["actors"]:
         found, _ = intel.lookup_actor(stix_id, name, db)
         facts.extend(found)
+
+    # No specific CVE/technique/mitigation/actor/software was named in the
+    # question (e.g. "what's concerning right now?") — fall back to the most
+    # notable current KEV entries instead of always answering "no data".
+    if not facts and nlp.wants_general_overview(message):
+        recent, _ = intel.lookup_recent_kev(db)
+        facts.extend(recent)
+        if recent:
+            top_cve = recent[0]["source"]["id"]
+            crosswalk, _ = intel.lookup_cve(top_cve, db, cache_db)
+            facts.extend(crosswalk)
 
     try:
         reply = llm.answer(message, facts)

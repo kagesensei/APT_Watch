@@ -5,6 +5,6 @@
   <p class="error-code">{{ self.code() }}</p>
   <h1>{% block title_text %}Something went wrong{% endblock %}</h1>
   <p class="error-message">{% block message %}An unexpected error occurred.{% endblock %}</p>
-  <p class="back-link"><a href="{{ url_for('main.index') }}">&larr; Back to APT_Watch</a></p>
+  <p class="back-link"><a href="{{ url_for('chat.index') }}">&larr; Back to APT_Watch</a></p>
 </div>
 {% endblock %}

@@ -3,6 +3,11 @@
   const form = document.getElementById("chat-form");
   const input = document.getElementById("chat-input");
 
+  function removeSuggestions() {
+    const el = log.querySelector(".chat-suggestions");
+    if (el) el.remove();
+  }
+
   function addMessage(role, text) {
     const el = document.createElement("div");
     el.className = "chat-message chat-message-" + role;
@@ -41,17 +46,14 @@
     log.scrollTop = log.scrollHeight;
   }
 
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    const message = input.value.trim();
-    if (!message) return;
-
+  function ask(message) {
+    removeSuggestions();
     addMessage("user", message);
     input.value = "";
     input.disabled = true;
     const pending = addMessage("assistant", "Thinking...");
 
-    fetch("/chat/ask", {
+    fetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: message }),
@@ -78,5 +80,18 @@
         input.disabled = false;
         input.focus();
       });
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const message = input.value.trim();
+    if (!message) return;
+    ask(message);
+  });
+
+  log.querySelectorAll(".chat-suggestion").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      ask(btn.textContent);
+    });
   });
 })();

@@ -12,6 +12,21 @@ MITIGATION_RE = re.compile(r"\bM\d{4}\b", re.IGNORECASE)
 MIN_FUZZY_LEN = 6
 FUZZY_THRESHOLD = 92
 
+# Open-ended questions ("what's concerning right now?") never name a specific
+# CVE/technique/actor, so the exact-ID/fuzzy-name matchers above find nothing
+# for them. This keyword gate lets chat.py fall back to a general "what's
+# currently notable" lookup instead of always answering "no data" — see
+# lookup_recent_kev in app/intel.py.
+GENERAL_CONCERN_RE = re.compile(
+    r"\b(concerning|critical|active|recent|worry|worried|dangerous|risk|"
+    r"top|latest|notable|serious|urgent|worse|worst)\b",
+    re.IGNORECASE,
+)
+
+
+def wants_general_overview(text):
+    return bool(GENERAL_CONCERN_RE.search(text))
+
 
 def extract_ids(text):
     return {

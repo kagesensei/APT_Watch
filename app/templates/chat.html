@@ -1,18 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Chat - APT_Watch{% endblock %}
+{% block title %}APT_Watch{% endblock %}
 {% block content %}
-<h1>Chat</h1>
+<h1>APT_Watch</h1>
 <p class="lede">
-  Ask about a CVE, technique, mitigation, or threat actor. Answers are generated
-  by a local LLM restricted to facts retrieved from this database — every claim
-  is backed by a source listed below the answer. Facts marked <span class="tag tag-derived">derived</span>
+  Ask about a CVE, technique, mitigation, or threat actor. Answers come from a
+  local LLM restricted to facts retrieved from this database — every claim is
+  backed by a source listed under the answer. Facts marked <span class="tag tag-derived">derived</span>
   come from an inferred CWE&rarr;CAPEC&rarr;ATT&amp;CK crosswalk, not a direct MITRE mapping.
+  Browse the underlying data directly under <strong>Library</strong> above.
 </p>
 
-<div id="chat-log" class="chat-log"></div>
+<div id="chat-log" class="chat-log">
+  <div class="chat-suggestions">
+    <span class="chat-suggestions-title">Try asking:</span>
+    <button type="button" class="chat-suggestion">What's a concerning CVE being actively exploited right now?</button>
+    <button type="button" class="chat-suggestion">What TTPs exploit CVE-2024-3400 and how do I mitigate it?</button>
+    <button type="button" class="chat-suggestion">What mitigates T1055?</button>
+    <button type="button" class="chat-suggestion">What techniques does APT29 use?</button>
+  </div>
+</div>
 
 <form id="chat-form" class="chat-form">
-  <input id="chat-input" type="text" placeholder="e.g. What TTPs exploit CVE-2024-XXXX and how do I mitigate it?" autocomplete="off">
+  <input id="chat-input" type="text" placeholder="Ask about a CVE, technique, mitigation, or threat actor..." autocomplete="off">
   <button type="submit">Ask</button>
 </form>
 {% endblock %}
