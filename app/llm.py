@@ -85,6 +85,11 @@ Never write a CVE, CWE, CAPEC, technique (T####), mitigation (M####), or group (
 that does not appear verbatim in the facts below, even as a guess or example — an invented
 ID that looks plausible is worse than saying you don't know one.
 
+Some facts explain WHY a piece of information isn't available (e.g. "this CVE's weakness
+maps to N CAPEC patterns, but none of them have an ATT&CK technique mapping"). If such a
+fact is present, you MUST include that specific explanation in your answer — never just
+say "I don't have that information" when a fact already explains the actual reason why.
+
 If the facts below do not answer the question, say plainly that you don't have that
 information in the data available — do not guess, and do not use any knowledge beyond
 the facts listed. Address exactly what the user asked first (e.g. if they ask about
@@ -152,6 +157,12 @@ def build_context(facts):
     tiers = {name: [] for name in CATEGORY_PRIORITY}
     for f in facts:
         tiers.setdefault(f.get("category", "actor_usage"), []).append(f)
+
+    # Within vuln_info, a "why this couldn't be answered" coverage note is the
+    # single most load-bearing fact for a TTP/APT-style question that dead-
+    # ends — put it first so it isn't just one line among several similar-
+    # looking KEV/NVD facts (models attend more reliably to earlier context).
+    tiers["vuln_info"].sort(key=lambda f: 0 if f["source"]["dataset"] == "APT_Watch" else 1)
 
     selected = []
     for tier_name in CATEGORY_PRIORITY:

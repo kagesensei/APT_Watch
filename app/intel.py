@@ -187,6 +187,39 @@ def lookup_cve(cve_id, db, cache_db):
             cwe_ids,
         ).fetchall()
 
+        if not technique_rows:
+            # Distinguish *why* the crosswalk came up empty — most CAPEC
+            # patterns aren't mapped to any ATT&CK technique at all (only
+            # ~29% are), so this is a common, expected dead end, not a bug.
+            # Surfacing it as a fact lets the model explain the gap instead
+            # of just saying "I don't know" with no context.
+            capec_count = db.execute(
+                f"SELECT COUNT(DISTINCT capec_id) FROM capec_cwe WHERE cwe_id IN ({placeholders})",
+                cwe_ids,
+            ).fetchone()[0]
+            cwe_list = ", ".join(cwe_ids)
+            if capec_count:
+                text = (
+                    f"{cve_id} involves weakness(es) {cwe_list}, which map to {capec_count} "
+                    f"MITRE CAPEC attack pattern(s) — but none of those patterns have an "
+                    f"ATT&CK technique mapping in MITRE's own CAPEC data. No specific TTP can "
+                    f"be identified for this CVE from the available crosswalk data; this is a "
+                    f"gap in CAPEC's own ATT&CK coverage (most CAPEC patterns aren't mapped to "
+                    f"any technique), not a missing lookup."
+                )
+            else:
+                text = (
+                    f"{cve_id} involves weakness(es) {cwe_list}, which do not map to any MITRE "
+                    f"CAPEC attack pattern in the available data. No specific TTP can be "
+                    f"identified for this CVE from the available crosswalk data."
+                )
+            facts.append({
+                "text": text,
+                "derived": False,
+                "category": "vuln_info",
+                "source": {"dataset": "APT_Watch", "id": cve_id, "name": "crosswalk coverage note", "url": None},
+            })
+
     technique_ids = sorted({row[3] for row in technique_rows})
     for cwe_id, capec_id, capec_name, technique_id in technique_rows:
         technique_name_row = db.execute(
