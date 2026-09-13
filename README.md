@@ -27,6 +27,7 @@ Run each ingest script once to build `data/cti.duckdb`:
 python ingest/attack.py   # MITRE ATT&CK Enterprise (actors, techniques, software, mitigations)
 python ingest/capec.py    # MITRE CAPEC (attack patterns; the CVE->technique crosswalk)
 python ingest/cve.py      # CISA Known Exploited Vulnerabilities catalog
+python ingest/ioc.py      # IOC feeds: URLhaus, MalwareBazaar, Feodo Tracker (no signup needed)
 ```
 
 | table | source | description |
@@ -40,6 +41,10 @@ python ingest/cve.py      # CISA Known Exploited Vulnerabilities catalog
 | `capec_technique` | CAPEC | which ATT&CK techniques each pattern maps to |
 | `kev` | CISA | actively-exploited CVEs, remediation deadlines, ransomware use |
 | `kev_cwe` | CISA | which weaknesses (CWEs) each KEV CVE involves |
+| `ioc_url` | URLhaus | malicious URLs |
+| `ioc_hash` | MalwareBazaar | file hashes (MD5/SHA1/SHA256), tagged with a malware family |
+| `ioc_c2` | Feodo Tracker | active botnet C2 IPs, tagged with a malware family |
+| `ioc_software` | (crosswalk) | IOC malware family name matched against `actor_software.software_name` |
 
 Revoked/deprecated ATT&CK and CAPEC objects are excluded. Each script prints
 row counts and runs a data quality check comparing its tables against the
@@ -53,6 +58,14 @@ CVE→CWE→CAPEC→ATT&CK (CAPEC attack patterns carry both CWE and ATT&CK
 mappings). It's a reasonable, widely-used correlation — but it's an inference,
 not a fact any single source states directly. The app tags every fact this
 way as **derived** and never presents it as if MITRE/NVD/CISA said it outright.
+
+**Same caveat applies to IOCs:** no public feed publishes a CVE-to-indicator
+mapping either. `intel.lookup_ioc_for_cve` searches the IOC tables for CISA
+KEV's own stated `vendor_project`/`product` name (a direct fact) — a name
+match, not confirmed evidence a given hash/URL/IP relates to exploitation of
+that CVE, always marked derived. Most CVEs will correctly return zero IOC
+matches; that's the honest answer for a name-based correlation over three
+small "recent" feeds, not a bug.
 
 Query the result with any DuckDB client, e.g.:
 
@@ -165,6 +178,21 @@ The model file and `data/nvd_cache.duckdb` (the on-demand NVD lookup cache —
 kept as a separate file so the main read-only `data/cti.duckdb` connection
 never needs write access) are both gitignored.
 
+## Scan
+
+The **Scan** page (`/scan`) lets you upload a text file — scan output, a log,
+a list of indicators — and checks it against the ingested IOC feeds. It
+recognizes file hashes (MD5/SHA1/SHA256), IPv4 addresses, and URLs (the same
+extraction `app/nlp.py` uses for chat); domains alone are deliberately not
+extracted, too high a false-positive rate without more context. The file is
+read into memory for that one request and **never written to disk** — capped
+at 5MB (`MAX_CONTENT_LENGTH`) and ~2MB of decoded text. A file that doesn't
+decode as mostly-valid UTF-8 text is rejected rather than scanned as garbage.
+
+You can also paste a single hash/IP/URL directly into a chat question — the
+same `intel.lookup_ioc()` backs both paths, and an exact match there is a
+**direct** fact (not derived): the indicator either is or isn't in the feeds.
+
 ## Accounts & saved chats
 
 - **Not signed in:** chats are saved in the browser's `sessionStorage` only —
@@ -198,23 +226,25 @@ a local dev app right now.
 
 ## Project layout
 
-- `ingest/attack.py`, `ingest/capec.py`, `ingest/cve.py` — implemented ingest
-  pipelines (see Data ingest above)
+- `ingest/attack.py`, `ingest/capec.py`, `ingest/cve.py`, `ingest/ioc.py` —
+  implemented ingest pipelines (see Data ingest above)
 - `ingest/feeds.py`, `ingest/malpedia.py`, `ingest/misp_galaxy.py` — additional
   intel source ingests (not yet implemented)
 - `resolve/aliases.py` — actor alias resolution across sources (not yet implemented)
 - `model/schema.sql` — full schema reference for both database files
 - `app/` — Flask application:
-  - `routes.py` (mounted at `/library`), `templates/*.html` (excl. `chat.html`) — the browsing UI, including the CVE list/detail pages
+  - `routes.py` (mounted at `/library`), `templates/*.html` (excl. `chat.html`, `scan.html`) — the browsing UI, including the CVE list/detail pages
   - `chat.py` (mounted at `/`) — the chat home page, `/ask` API, and the `/api/chats/*` saved-chat CRUD API
-  - `nlp.py` — entity extraction for chat
-  - `intel.py` — fact retrieval + source citation for chat and the CVE Library page (the only module that queries the DB for facts)
-  - `llm.py` — local LLM loading, prompting, and the fabricated-ID guard
+  - `scan.py` (mounted at `/scan`) — the IOC file-scan page and `/scan/upload` API
+  - `nlp.py` — entity extraction for chat and the scan page (CVE/technique/mitigation IDs, actor/software fuzzy matching, hash/IP/URL indicators)
+  - `intel.py` — fact retrieval + source citation for chat, the CVE Library page, and IOC lookups (the only module that queries the DB for facts)
+  - `llm.py` — local LLM loading, prompting, the fabricated-ID guard, and per-category context budgeting
   - `linkify.py` — turns verified IDs in an answer into clickable Library links
   - `preview.py` — `/api/preview/<type>/<id>` API backing the view panel
   - `auth.py` — Google OAuth (Authlib), session-based `current_user()`, `login_required`
   - `chats_store.py` — reads/writes `data/chats/<user_id>.json`
   - `templates/chat.html`, `static/js/chat.js` — the 3-column chat page's markup/JS
+  - `templates/scan.html`, `static/js/scan.js` — the scan page's markup/JS
   - `db.py`, `cache.py` — read-only main DB connection, writable NVD cache connection
 - `main.py` — Flask app entry point; loads `.env` via `python-dotenv`
 - `models/` — local GGUF model files (gitignored)

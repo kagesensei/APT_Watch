@@ -87,7 +87,9 @@ ID that looks plausible is worse than saying you don't know one.
 
 If the facts below do not answer the question, say plainly that you don't have that
 information in the data available — do not guess, and do not use any knowledge beyond
-the facts listed. Keep your answer concise and actionable."""
+the facts listed. Address exactly what the user asked first (e.g. if they ask about
+indicators of compromise, lead with any IOC facts before general background), rather
+than opening with unrelated context. Keep your answer concise and actionable."""
 
 # Regexes for the ID guardrail below: any of these patterns appearing in the
 # model's answer must also appear somewhere in the facts it was given, or the
@@ -131,19 +133,30 @@ def _check_for_fabricated_ids(reply, facts):
     )
 
 
+MAX_PER_TIER = 8
+
+# Priority order for context-budget allocation, most important first. Every
+# fact in app/intel.py carries an explicit "category" for this — inferring
+# priority from derived/dataset alone let one numerous category (e.g.
+# actor_usage facts reached via the CWE/CAPEC crosswalk, often 40+ per CVE)
+# silently crowd out a smaller, more directly relevant one (mitigations, or
+# IOC correlations) before the fact cap. Each tier gets its own reserved
+# slice of the budget instead of competing in one shared pool.
+CATEGORY_PRIORITY = ["vuln_info", "mitigation", "ioc", "actor_usage", "crosswalk_detail"]
+
+
 def build_context(facts):
     if not facts:
         return "(No matching facts were found in the database for this question.)"
 
-    direct = [f for f in facts if not f["derived"]]
-    derived = [f for f in facts if f["derived"]]
-    # Among derived facts, mitigations/actors are the actionable payload; raw
-    # CWE->CAPEC crosswalk provenance lines are supporting detail — when facts
-    # get capped, drop the provenance detail before dropping something actionable.
-    derived_actionable = [f for f in derived if f["source"]["dataset"] != "MITRE CAPEC"]
-    derived_detail = [f for f in derived if f["source"]["dataset"] == "MITRE CAPEC"]
+    tiers = {name: [] for name in CATEGORY_PRIORITY}
+    for f in facts:
+        tiers.setdefault(f.get("category", "actor_usage"), []).append(f)
 
-    selected = (direct + derived_actionable + derived_detail)[:MAX_FACTS]
+    selected = []
+    for tier_name in CATEGORY_PRIORITY:
+        selected.extend(tiers[tier_name][:MAX_PER_TIER])
+    selected = selected[:MAX_FACTS]
     omitted = len(facts) - len(selected)
 
     lines = [
@@ -161,6 +174,6 @@ def answer(question, facts):
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"FACTS:\n{context}\n\nQUESTION: {question}"},
     ]
-    result = llm.create_chat_completion(messages=messages, temperature=0.2, max_tokens=512)
+    result = llm.create_chat_completion(messages=messages, temperature=0.2, max_tokens=900)
     reply = result["choices"][0]["message"]["content"].strip()
     return _check_for_fabricated_ids(reply, facts)

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Scan - APT_Watch{% endblock %}
+{% block content %}
+<h1>Scan for Indicators of Compromise</h1>
+<p class="lede">
+  Upload a text file — scan output, a log, a list of hashes/IPs/URLs — and it's
+  checked against the ingested IOC feeds (MalwareBazaar, URLhaus, Feodo Tracker).
+  Recognized indicators: file hashes (MD5/SHA1/SHA256), IPv4 addresses, and URLs.
+  <strong>Your file is scanned in memory for this request only and is never saved to disk.</strong>
+</p>
+
+<form id="scan-form" class="scan-form">
+  <input type="file" id="scan-file" accept=".txt,.log,.csv,text/plain" required>
+  <button type="submit">Scan</button>
+</form>
+
+<div id="scan-status" class="scan-status"></div>
+<div id="scan-results"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/scan.js') }}"></script>
+{% endblock %}

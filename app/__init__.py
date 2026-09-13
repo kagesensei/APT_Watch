@@ -11,6 +11,7 @@ from . import db as db_module
 
 def create_app():
     app = Flask(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB, for the scan-page file upload
 
     app.secret_key = os.environ.get("APTWATCH_SECRET_KEY")
     if not app.secret_key:
@@ -36,6 +37,10 @@ def create_app():
     from .preview import bp as preview_bp
 
     app.register_blueprint(preview_bp)
+
+    from .scan import bp as scan_bp
+
+    app.register_blueprint(scan_bp)
 
     app.register_blueprint(auth_module.bp)
 

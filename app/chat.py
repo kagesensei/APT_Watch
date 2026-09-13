@@ -16,7 +16,7 @@ def index():
 def _has_any_entity(entities):
     return bool(
         entities["cves"] or entities["techniques"] or entities["mitigations"]
-        or entities["actors"] or entities["software"]
+        or entities["actors"] or entities["software"] or entities["iocs"]
     )
 
 
@@ -55,6 +55,9 @@ def ask():
     for stix_id, name, _score in entities["actors"]:
         found, _ = intel.lookup_actor(stix_id, name, db)
         facts.extend(found)
+    for ioc in entities["iocs"]:
+        found, _ = intel.lookup_ioc(ioc["value"], ioc["type"], db)
+        facts.extend(found)
 
     # No specific CVE/technique/mitigation/actor/software was named in the
     # question (e.g. "what's concerning right now?") — fall back to the most
@@ -81,6 +84,7 @@ def ask():
             "techniques": entities["techniques"],
             "mitigations": entities["mitigations"],
             "actors": [name for _sid, name, _score in entities["actors"]],
+            "iocs": [ioc["value"] for ioc in entities["iocs"]],
         },
     })
 

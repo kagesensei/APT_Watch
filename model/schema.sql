@@ -4,10 +4,13 @@
 -- is not executed directly (each ingest script creates its own tables via
 -- `CREATE OR REPLACE TABLE`). Keep this in sync when a table's shape changes.
 --
--- data/cti.duckdb — built by ingest/attack.py, ingest/capec.py, ingest/cve.py.
+-- data/cti.duckdb — built by ingest/attack.py, ingest/capec.py, ingest/cve.py,
+-- ingest/ioc.py.
 -- data/nvd_cache.duckdb — separate file, written at request time by the chat
 -- feature (app/cache.py) to cache on-demand NVD lookups; kept out of the
 -- read-only main database on purpose.
+-- data/chats/<user_id>.json — per-user saved chats (app/chats_store.py), not
+-- a DuckDB table at all; documented here for completeness.
 
 -- === MITRE ATT&CK (ingest/attack.py) ===
 
@@ -89,6 +92,47 @@ CREATE TABLE cve_cache(
     fetched_at TIMESTAMP
 );
 
+-- === IOC feeds (ingest/ioc.py) ===
+-- No signup required. There is no CVE field in any of these — the CVE
+-- correlation in app/intel.py.lookup_ioc_for_cve works by matching KEV's own
+-- vendor_project/product fields against these tables' name/tag/signature
+-- fields, always marked "derived" (a name match, not confirmed evidence).
+
+CREATE TABLE ioc_url(          -- abuse.ch URLhaus (malicious URLs)
+    id VARCHAR,
+    url VARCHAR,
+    date_added VARCHAR,
+    threat VARCHAR,
+    tags VARCHAR,             -- comma-separated, mixes format/arch tags with malware family
+    status VARCHAR,
+    urlhaus_link VARCHAR
+);
+
+CREATE TABLE ioc_hash(         -- abuse.ch MalwareBazaar (file hashes)
+    sha256 VARCHAR,
+    md5 VARCHAR,
+    sha1 VARCHAR,
+    file_name VARCHAR,
+    signature VARCHAR,        -- malware family name, e.g. 'Emotet' ('n/a' if unclassified)
+    first_seen VARCHAR
+);
+
+CREATE TABLE ioc_c2(           -- abuse.ch Feodo Tracker (active botnet C2 IPs)
+    ip_address VARCHAR,
+    port INTEGER,
+    malware VARCHAR,          -- malware family name
+    first_seen VARCHAR,
+    last_online VARCHAR,
+    status VARCHAR
+);
+
+CREATE TABLE ioc_software(     -- crosswalk built at ingest time
+    source_table VARCHAR,     -- 'ioc_hash' | 'ioc_c2'
+    malware_name VARCHAR,     -- exact, case-insensitive match to actor_software.software_name
+    software_id VARCHAR,
+    software_name VARCHAR
+);
+
 -- The CVE -> ATT&CK technique crosswalk used by the chat feature (app/intel.py)
 -- joins across all of the above:
 --
@@ -98,4 +142,7 @@ CREATE TABLE cve_cache(
 -- This path is a computed correlation, not a fact any single source states
 -- directly — MITRE does not publish a CVE-to-ATT&CK mapping. The app labels
 -- every fact reached this way as "derived" and never presents it as a direct
--- MITRE/NVD/CISA statement.
+-- MITRE/NVD/CISA statement. Every fact intel.py produces also carries an
+-- explicit "category" (vuln_info/mitigation/ioc/actor_usage/crosswalk_detail)
+-- used purely to budget how many facts of each kind reach the LLM's context
+-- window (app/llm.py) without one numerous category crowding out another.

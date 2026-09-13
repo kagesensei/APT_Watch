@@ -6,6 +6,16 @@ CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
 TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b", re.IGNORECASE)
 MITIGATION_RE = re.compile(r"\bM\d{4}\b", re.IGNORECASE)
 
+# Indicator shapes recognized directly in chat text (the scan page reuses
+# these same patterns for uploaded files). Domains are deliberately excluded:
+# without more context, a bare domain-looking token has too high a
+# false-positive rate (version strings, timestamps, etc. can look like one).
+IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
+SHA1_RE = re.compile(r"\b[a-fA-F0-9]{40}\b")
+MD5_RE = re.compile(r"\b[a-fA-F0-9]{32}\b")
+URL_RE = re.compile(r"https?://\S+")
+
 # Below this length, a candidate name/alias (e.g. "at", "APT2") is too easy to
 # collide with unrelated substrings or other entities' prefixes, so it's only
 # ever matched exactly (whole word), never fuzzily.
@@ -34,6 +44,32 @@ def extract_ids(text):
         "techniques": sorted({m.upper() for m in TECHNIQUE_RE.findall(text)}),
         "mitigations": sorted({m.upper() for m in MITIGATION_RE.findall(text)}),
     }
+
+
+def extract_iocs(text):
+    """Returns a de-duplicated list of {value, type} dicts, type in
+    'hash'/'ip'/'url'. Order checked longest-pattern-first so a URL isn't
+    also partially re-matched by a shorter pattern.
+    """
+    iocs = []
+    seen = set()
+
+    def add(value, kind):
+        if value not in seen:
+            seen.add(value)
+            iocs.append({"value": value, "type": kind})
+
+    for value in URL_RE.findall(text):
+        add(value.rstrip(".,);]\"'"), "url")
+    for pattern in (SHA256_RE, SHA1_RE, MD5_RE):
+        for value in pattern.findall(text):
+            add(value.lower(), "hash")
+    for value in IPV4_RE.findall(text):
+        octets = value.split(".")
+        if all(o.isdigit() and 0 <= int(o) <= 255 for o in octets):
+            add(value, "ip")
+
+    return iocs
 
 
 def _word_boundary_match(candidate, text_lower):
@@ -109,4 +145,5 @@ def extract_entities(text, db):
         "mitigations": ids["mitigations"],
         "actors": match_actors(text, db),
         "software": match_software(text, db),
+        "iocs": extract_iocs(text),
     }

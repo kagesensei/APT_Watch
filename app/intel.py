@@ -129,6 +129,7 @@ def lookup_recent_kev(db, limit=8):
                 f"to be actively exploited in the wild. Known ransomware use: {ransomware}."
             ),
             "derived": False,
+            "category": "vuln_info",
             "source": {"dataset": "CISA KEV", "id": cve_id, "name": name, "url": KEV_CATALOG_URL},
         })
     return facts, dedup_sources(facts)
@@ -145,6 +146,7 @@ def lookup_cve(cve_id, db, cache_db):
         facts.append({
             "text": text,
             "derived": False,
+            "category": "vuln_info",
             "source": {"dataset": "NVD", "id": cve_id, "name": cve_id, "url": nvd_url(cve_id)},
         })
 
@@ -162,6 +164,7 @@ def lookup_cve(cve_id, db, cache_db):
                 f"{ransomware}. Required action: {required_action}"
             ),
             "derived": False,
+            "category": "vuln_info",
             "source": {"dataset": "CISA KEV", "id": cve_id, "name": name, "url": KEV_CATALOG_URL},
         })
 
@@ -199,6 +202,7 @@ def lookup_cve(cve_id, db, cache_db):
                 f"MITRE ATT&CK-to-CVE mapping (MITRE does not publish one)."
             ),
             "derived": True,
+            "category": "crosswalk_detail",
             "source": {"dataset": "MITRE CAPEC", "id": capec_id, "name": capec_name, "url": capec_url(capec_id)},
         })
 
@@ -215,6 +219,7 @@ def lookup_cve(cve_id, db, cache_db):
                     f"above, not a direct statement about {cve_id} itself."
                 ),
                 "derived": True,
+                "category": "mitigation",
                 "source": {
                     "dataset": "MITRE ATT&CK",
                     "id": mitigation_id,
@@ -237,8 +242,183 @@ def lookup_cve(cve_id, db, cache_db):
                     f"NOT a documented statement that {name} exploits {cve_id} specifically."
                 ),
                 "derived": True,
+                "category": "actor_usage",
                 "source": {"dataset": "MITRE ATT&CK", "id": attack_id, "name": name, "url": group_url(attack_id)},
             })
+
+    facts.extend(lookup_ioc_for_cve(cve_id, db))
+
+    return facts, dedup_sources(facts)
+
+
+def lookup_ioc_for_cve(cve_id, db):
+    """Public IOC feeds don't carry a CVE field (no source publishes CVE->IOC
+    mappings) — but CISA KEV directly states the affected vendor/product, so
+    search IOC feeds for that product name. This is a short, legible 2-hop
+    correlation (CVE -> KEV's own product field -> IOC), always marked
+    derived: a name match is not confirmed evidence a given indicator relates
+    to exploitation of this specific CVE.
+    """
+    kev_row = db.execute(
+        "SELECT vendor_project, product FROM kev WHERE cve_id = ?", [cve_id]
+    ).fetchone()
+    if not kev_row:
+        return []
+    vendor, product = kev_row
+    terms = {t for t in (vendor, product) if t}
+    if not terms:
+        return []
+
+    facts = []
+    for term in terms:
+        like = f"%{term}%"
+
+        for sha256, file_name, signature, first_seen in db.execute(
+            "SELECT sha256, file_name, signature, first_seen FROM ioc_hash "
+            "WHERE signature ILIKE ? OR file_name ILIKE ? LIMIT 5",
+            [like, like],
+        ).fetchall():
+            facts.append({
+                "text": (
+                    f"Indicator of Compromise (IOC) - file hash: MalwareBazaar has a file hash "
+                    f"({sha256[:16]}..., file name '{file_name}', family '{signature}') tagged "
+                    f"with '{term}', the product {cve_id} affects per CISA KEV, first seen "
+                    f"{first_seen}. This is a name-based correlation, not confirmed evidence "
+                    f"this file exploited {cve_id}."
+                ),
+                "derived": True,
+                "category": "ioc",
+                "source": {"dataset": "MalwareBazaar", "id": sha256, "name": file_name, "url": None},
+            })
+
+        for entry_id, url, tags, threat in db.execute(
+            "SELECT id, url, tags, threat FROM ioc_url WHERE tags ILIKE ? OR url ILIKE ? LIMIT 5",
+            [like, like],
+        ).fetchall():
+            facts.append({
+                "text": (
+                    f"Indicator of Compromise (IOC) - malicious URL: URLhaus has a URL "
+                    f"({url}, threat '{threat}', tags '{tags}') tagged with '{term}', the "
+                    f"product {cve_id} affects per CISA KEV. This is a name-based correlation, "
+                    f"not confirmed evidence this URL relates to {cve_id}."
+                ),
+                "derived": True,
+                "category": "ioc",
+                "source": {
+                    "dataset": "URLhaus", "id": entry_id, "name": url,
+                    "url": f"https://urlhaus.abuse.ch/url/{entry_id}/",
+                },
+            })
+
+        for ip_address, malware, first_seen in db.execute(
+            "SELECT ip_address, malware, first_seen FROM ioc_c2 WHERE malware ILIKE ? LIMIT 5",
+            [like],
+        ).fetchall():
+            facts.append({
+                "text": (
+                    f"Indicator of Compromise (IOC) - C2 IP address: Feodo Tracker lists "
+                    f"{ip_address} as a botnet C2 server for '{malware}', tagged with '{term}', "
+                    f"the product {cve_id} affects per CISA KEV, first seen {first_seen}. This "
+                    f"is a name-based correlation, not confirmed evidence this C2 relates to "
+                    f"{cve_id}."
+                ),
+                "derived": True,
+                "category": "ioc",
+                "source": {"dataset": "Feodo Tracker", "id": ip_address, "name": malware, "url": None},
+            })
+
+    return facts
+
+
+def lookup_ioc(indicator, indicator_type, db):
+    """Look up a single hash/IP/URL directly named in a chat question or a
+    scanned file. Unlike the CVE correlation above, an exact match here IS a
+    fact (this hash/IP/URL is a known indicator) — only the follow-on
+    actor/technique context (via ioc_software) is a derived name-based
+    correlation.
+    """
+    facts = []
+    malware_name = None
+
+    if indicator_type == "hash":
+        row = db.execute(
+            "SELECT sha256, md5, sha1, file_name, signature, first_seen FROM ioc_hash "
+            "WHERE sha256 = ? OR md5 = ? OR sha1 = ?",
+            [indicator, indicator, indicator],
+        ).fetchone()
+        if row:
+            sha256, md5, sha1, file_name, signature, first_seen = row
+            malware_name = signature
+            facts.append({
+                "text": (
+                    f"Indicator of Compromise (IOC) confirmed: {indicator} matches a known "
+                    f"malware sample in MalwareBazaar: file name '{file_name}', family "
+                    f"'{signature}', first seen {first_seen}."
+                ),
+                "derived": False,
+                "category": "ioc",
+                "source": {"dataset": "MalwareBazaar", "id": sha256, "name": file_name, "url": None},
+            })
+    elif indicator_type == "ip":
+        row = db.execute(
+            "SELECT ip_address, malware, first_seen, status FROM ioc_c2 WHERE ip_address = ?",
+            [indicator],
+        ).fetchone()
+        if row:
+            ip_address, malware, first_seen, ioc_status = row
+            malware_name = malware
+            facts.append({
+                "text": (
+                    f"Indicator of Compromise (IOC) confirmed: {indicator} is listed by Feodo "
+                    f"Tracker as a botnet C2 server for '{malware}' (status: {ioc_status}, "
+                    f"first seen {first_seen})."
+                ),
+                "derived": False,
+                "category": "ioc",
+                "source": {"dataset": "Feodo Tracker", "id": ip_address, "name": malware, "url": None},
+            })
+    elif indicator_type == "url":
+        row = db.execute(
+            "SELECT id, url, threat, tags FROM ioc_url WHERE url = ?", [indicator]
+        ).fetchone()
+        if row:
+            entry_id, url, threat, tags = row
+            facts.append({
+                "text": (
+                    f"Indicator of Compromise (IOC) confirmed: {indicator} is listed by URLhaus "
+                    f"as a malicious URL (threat: {threat}, tags: {tags})."
+                ),
+                "derived": False,
+                "category": "ioc",
+                "source": {
+                    "dataset": "URLhaus", "id": entry_id, "name": url,
+                    "url": f"https://urlhaus.abuse.ch/url/{entry_id}/",
+                },
+            })
+
+    if malware_name:
+        for software_id, software_name in db.execute(
+            "SELECT DISTINCT software_id, software_name FROM ioc_software WHERE malware_name = ?",
+            [malware_name],
+        ).fetchall():
+            actors = db.execute(
+                "SELECT DISTINCT a.attack_id, a.name FROM actor a "
+                "JOIN actor_software asw ON asw.actor_stix_id = a.stix_id "
+                "WHERE asw.software_id = ?",
+                [software_id],
+            ).fetchall()
+            for attack_id, name in actors:
+                facts.append({
+                    "text": (
+                        f"'{malware_name}' matches ATT&CK software {software_name}, which "
+                        f"{name} is documented to use. This is a name-based correlation between "
+                        f"the IOC feed's family name and ATT&CK's software name, not a confirmed "
+                        f"link between this specific indicator and {name}."
+                    ),
+                    "derived": True,
+                    "category": "actor_usage",
+                    "source": {"dataset": "MITRE ATT&CK", "id": attack_id, "name": name, "url": group_url(attack_id)},
+                })
 
     return facts, dedup_sources(facts)
 
@@ -252,6 +432,23 @@ def lookup_technique(technique_id, db):
 
     facts = []
 
+    mitigations = db.execute(
+        "SELECT DISTINCT mitigation_id, mitigation_name FROM technique_mitigation WHERE technique_id = ?",
+        [technique_id],
+    ).fetchall()
+    for mitigation_id, mitigation_name in mitigations:
+        facts.append({
+            "text": f"Mitigation {mitigation_id} ({mitigation_name}) addresses technique {technique_id} ({technique_name}).",
+            "derived": False,
+            "category": "mitigation",
+            "source": {
+                "dataset": "MITRE ATT&CK",
+                "id": mitigation_id,
+                "name": mitigation_name,
+                "url": mitigation_url(mitigation_id),
+            },
+        })
+
     actors = db.execute(
         "SELECT DISTINCT a.attack_id, a.name FROM actor a "
         "JOIN actor_technique atq ON atq.actor_stix_id = a.stix_id "
@@ -262,23 +459,8 @@ def lookup_technique(technique_id, db):
         facts.append({
             "text": f"{name} is documented by MITRE ATT&CK as using technique {technique_id} ({technique_name}).",
             "derived": False,
+            "category": "actor_usage",
             "source": {"dataset": "MITRE ATT&CK", "id": attack_id, "name": name, "url": group_url(attack_id)},
-        })
-
-    mitigations = db.execute(
-        "SELECT DISTINCT mitigation_id, mitigation_name FROM technique_mitigation WHERE technique_id = ?",
-        [technique_id],
-    ).fetchall()
-    for mitigation_id, mitigation_name in mitigations:
-        facts.append({
-            "text": f"Mitigation {mitigation_id} ({mitigation_name}) addresses technique {technique_id} ({technique_name}).",
-            "derived": False,
-            "source": {
-                "dataset": "MITRE ATT&CK",
-                "id": mitigation_id,
-                "name": mitigation_name,
-                "url": mitigation_url(mitigation_id),
-            },
         })
 
     return facts, dedup_sources(facts)
@@ -306,6 +488,7 @@ def lookup_mitigation(mitigation_id, db):
         facts.append({
             "text": f"Mitigation {mitigation_id} ({mitigation_name}) addresses technique {technique_id} ({technique_name}).",
             "derived": False,
+            "category": "mitigation",
             "source": {
                 "dataset": "MITRE ATT&CK",
                 "id": technique_id,
@@ -335,6 +518,7 @@ def lookup_actor(stix_id, name, db):
         facts.append({
             "text": f"{name} is documented by MITRE ATT&CK as using technique {technique_id} ({technique_name}).",
             "derived": False,
+            "category": "actor_usage",
             "source": {"dataset": "MITRE ATT&CK", "id": technique_id, "name": technique_name, "url": technique_url(technique_id)},
         })
 
@@ -346,6 +530,7 @@ def lookup_actor(stix_id, name, db):
         facts.append({
             "text": f"{name} is documented by MITRE ATT&CK as using {software_type} {software_name}.",
             "derived": False,
+            "category": "actor_usage",
             "source": {"dataset": "MITRE ATT&CK", "id": software_id, "name": software_name, "url": None},
         })
 
