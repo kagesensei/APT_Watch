@@ -5,4 +5,6 @@ __pycache__/
 data/raw/
 data/staging/
 data/nvd_cache.duckdb
+data/chats/
 models/
+.env

@@ -1,6 +1,10 @@
+import os
+import secrets
+
 from flask import Flask, render_template
 from werkzeug.exceptions import HTTPException
 
+from . import auth as auth_module
 from . import cache as cache_module
 from . import db as db_module
 
@@ -8,8 +12,18 @@ from . import db as db_module
 def create_app():
     app = Flask(__name__)
 
+    app.secret_key = os.environ.get("APTWATCH_SECRET_KEY")
+    if not app.secret_key:
+        app.secret_key = secrets.token_hex(32)
+        app.logger.warning(
+            "APTWATCH_SECRET_KEY not set - using a random per-process key. "
+            "Sessions (and Google sign-in) will not survive a restart. "
+            "Set APTWATCH_SECRET_KEY for anything beyond local testing."
+        )
+
     db_module.init_app(app)
     cache_module.init_app(app)
+    auth_module.init_app(app)
 
     from .routes import bp
 
@@ -18,6 +32,12 @@ def create_app():
     from .chat import bp as chat_bp
 
     app.register_blueprint(chat_bp)
+
+    from .preview import bp as preview_bp
+
+    app.register_blueprint(preview_bp)
+
+    app.register_blueprint(auth_module.bp)
 
     register_error_handlers(app)
 

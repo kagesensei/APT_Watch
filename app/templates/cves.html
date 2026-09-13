@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "_pagination.html" as pagination %}
+{% block title %}CVEs - APT_Watch{% endblock %}
+{% block content %}
+<h1>Actively Exploited CVEs</h1>
+<p class="lede">From CISA's Known Exploited Vulnerabilities (KEV) catalog.</p>
+<form class="search-form" method="get">
+  <input type="text" name="q" placeholder="Search by CVE ID or name" value="{{ q }}">
+  <button type="submit">Search</button>
+</form>
+
+{% if cves %}
+<table class="data-table">
+  <thead><tr><th>CVE</th><th>Name</th><th>Vendor / Product</th><th>Added</th><th>Ransomware</th></tr></thead>
+  <tbody>
+    {% for cve_id, name, vendor, product, date_added, ransomware in cves %}
+    <tr>
+      <td><a href="{{ url_for('main.cve_detail', cve_id=cve_id) }}">{{ cve_id }}</a></td>
+      <td>{{ name }}</td>
+      <td>{{ vendor }} {{ product }}</td>
+      <td>{{ date_added }}</td>
+      <td><span class="tag {{ 'tag-derived' if ransomware == 'Known' else '' }}">{{ ransomware }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{{ pagination.render(page, size, total, 'main.cves', q) }}
+{% else %}
+<p class="empty">No CVEs found.</p>
+{% endif %}
+{% endblock %}

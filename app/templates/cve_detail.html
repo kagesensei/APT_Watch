@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ cve_id }} - APT_Watch{% endblock %}
+{% block content %}
+<p class="back-link"><a href="{{ url_for('main.cves') }}">&larr; All CVEs</a></p>
+<h1>{{ cve_id }}</h1>
+
+{% if kev %}
+{% set name, vendor, product, date_added, due_date, short_description, required_action, ransomware = kev %}
+<p class="meta">{{ name }}</p>
+<p class="meta">Affects: <strong>{{ vendor }} {{ product }}</strong></p>
+<p class="meta">Added to CISA KEV: <strong>{{ date_added }}</strong> &middot; Remediation due: <strong>{{ due_date }}</strong></p>
+<p class="meta">Known ransomware use: <span class="tag {{ 'tag-derived' if ransomware == 'Known' else '' }}">{{ ransomware }}</span></p>
+{% if short_description %}<p>{{ short_description }}</p>{% endif %}
+{% if required_action %}<p class="meta"><strong>Required action:</strong> {{ required_action }}</p>{% endif %}
+{% else %}
+<p class="empty">Not in CISA's Known Exploited Vulnerabilities catalog.</p>
+{% endif %}
+
+<h2>Related facts ({{ facts|length }})</h2>
+<p class="lede">Facts marked <span class="tag tag-derived">derived</span> come from the inferred CWE&rarr;CAPEC&rarr;ATT&amp;CK crosswalk, not a direct MITRE/NVD/CISA statement.</p>
+{% if facts %}
+<ul class="pill-list">
+  {% for fact in facts %}
+  <li>
+    <span class="tag {{ 'tag-derived' if fact.derived else '' }}">{{ 'derived' if fact.derived else 'direct' }}</span>
+    {{ fact.text }}
+    {% if fact.source.url %}<a href="{{ fact.source.url }}" target="_blank" rel="noopener" class="fact-source">[{{ fact.source.dataset }}]</a>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No related facts found in the database.</p>
+{% endif %}
+{% endblock %}

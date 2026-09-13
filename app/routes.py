@@ -1,5 +1,7 @@
 from flask import Blueprint, abort, render_template, request
 
+from . import intel
+from .cache import get_cache_db
 from .db import get_db
 
 bp = Blueprint("main", __name__, url_prefix="/library")
@@ -23,6 +25,7 @@ def index():
         "techniques": db.execute("SELECT COUNT(DISTINCT technique_id) FROM actor_technique").fetchone()[0],
         "software": db.execute("SELECT COUNT(DISTINCT software_id) FROM actor_software").fetchone()[0],
         "mitigations": db.execute("SELECT COUNT(DISTINCT mitigation_id) FROM technique_mitigation").fetchone()[0],
+        "cves": db.execute("SELECT COUNT(DISTINCT cve_id) FROM kev").fetchone()[0],
     }
     return render_template("index.html", counts=counts)
 
@@ -220,4 +223,50 @@ def mitigation_detail(mitigation_id):
         mitigation_id=mitigation_id,
         mitigation_name=name_row[0],
         techniques=techniques_mitigated,
+    )
+
+
+@bp.route("/cves")
+def cves():
+    db = get_db()
+    q = request.args.get("q", "").strip()
+    page, size, offset = paginate(request.args)
+
+    where = "WHERE cve_id ILIKE ? OR vulnerability_name ILIKE ?" if q else ""
+    params = [f"%{q}%", f"%{q}%"] if q else []
+
+    total = db.execute(f"SELECT COUNT(*) FROM kev {where}", params).fetchone()[0]
+    rows = db.execute(
+        f"SELECT cve_id, vulnerability_name, vendor_project, product, date_added, known_ransomware "
+        f"FROM kev {where} ORDER BY date_added DESC LIMIT ? OFFSET ?",
+        params + [size, offset],
+    ).fetchall()
+
+    return render_template("cves.html", cves=rows, q=q, page=page, total=total, size=size)
+
+
+@bp.route("/cves/<cve_id>")
+def cve_detail(cve_id):
+    db = get_db()
+    kev_row = db.execute(
+        "SELECT vulnerability_name, vendor_project, product, date_added, due_date, "
+        "short_description, required_action, known_ransomware FROM kev WHERE cve_id = ?",
+        [cve_id],
+    ).fetchone()
+
+    cache_db = get_cache_db()
+    facts, sources = intel.lookup_cve(cve_id, db, cache_db)
+
+    # Not every CVE chat links to is in the curated KEV list (NVD covers all
+    # CVEs; KEV is only actively-exploited ones) — only 404 if we truly have
+    # nothing on this ID from either source.
+    if kev_row is None and not facts:
+        abort(404)
+
+    return render_template(
+        "cve_detail.html",
+        cve_id=cve_id,
+        kev=kev_row,
+        facts=facts,
+        sources=sources,
     )

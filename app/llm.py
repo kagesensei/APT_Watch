@@ -110,7 +110,7 @@ def _ids_in_text(text):
     return ids
 
 
-def _allowed_ids(facts):
+def allowed_ids(facts):
     allowed = set()
     for f in facts:
         allowed.add(f["source"]["id"].upper())
@@ -119,7 +119,7 @@ def _allowed_ids(facts):
 
 
 def _check_for_fabricated_ids(reply, facts):
-    unverified = _ids_in_text(reply) - _allowed_ids(facts)
+    unverified = _ids_in_text(reply) - allowed_ids(facts)
     if not unverified:
         return reply
     return (

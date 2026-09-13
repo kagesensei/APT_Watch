@@ -1,6 +1,7 @@
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, render_template, request
 
-from . import intel, llm, nlp
+from . import chats_store, intel, linkify, llm, nlp
+from .auth import current_user, login_required
 from .cache import get_cache_db
 from .db import get_db
 
@@ -73,6 +74,7 @@ def ask():
 
     return jsonify({
         "answer": reply,
+        "answer_html": linkify.linkify(reply, facts, db),
         "sources": intel.dedup_sources(facts),
         "entities": {
             "cves": entities["cves"],
@@ -81,3 +83,45 @@ def ask():
             "actors": [name for _sid, name, _score in entities["actors"]],
         },
     })
+
+
+# --- Saved chats (signed-in users only; anonymous chats live in the browser's
+# sessionStorage on the frontend and never touch the server) ---
+
+@bp.route("/api/chats")
+@login_required
+def list_chats():
+    return jsonify(chats_store.list_chats(current_user()["id"]))
+
+
+@bp.route("/api/chats/<chat_id>", methods=["GET"])
+@login_required
+def get_chat(chat_id):
+    chat = chats_store.get_chat(current_user()["id"], chat_id)
+    if chat is None:
+        abort(404)
+    return jsonify({"id": chat_id, **chat})
+
+
+@bp.route("/api/chats/<chat_id>", methods=["PUT"])
+@login_required
+def put_chat(chat_id):
+    data = request.get_json(silent=True) or {}
+    messages = data.get("messages")
+    title = (data.get("title") or "").strip()
+    if messages is None:
+        return jsonify({"error": "messages is required."}), 400
+    if not title:
+        first_user_message = next((m.get("content", "") for m in messages if m.get("role") == "user"), "")
+        title = first_user_message[:60] or "New chat"
+    chats_store.upsert_chat(current_user()["id"], chat_id, title, messages)
+    return jsonify({"id": chat_id, "title": title})
+
+
+@bp.route("/api/chats/<chat_id>", methods=["DELETE"])
+@login_required
+def delete_chat(chat_id):
+    deleted = chats_store.delete_chat(current_user()["id"], chat_id)
+    if not deleted:
+        abort(404)
+    return jsonify({"deleted": chat_id})

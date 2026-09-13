@@ -1,31 +1,51 @@
 {% extends "base.html" %}
 {% block title %}APT_Watch{% endblock %}
+{% block container_class %}container-wide{% endblock %}
 {% block content %}
-<h1>APT_Watch</h1>
-<p class="lede">
-  Ask about a CVE, technique, mitigation, or threat actor. Answers come from a
-  local LLM restricted to facts retrieved from this database — every claim is
-  backed by a source listed under the answer. Facts marked <span class="tag tag-derived">derived</span>
-  come from an inferred CWE&rarr;CAPEC&rarr;ATT&amp;CK crosswalk, not a direct MITRE mapping.
-  Browse the underlying data directly under <strong>Library</strong> above.
-</p>
+<div class="chat-layout">
+  <aside class="chat-sidebar">
+    <button type="button" id="new-chat-btn" class="new-chat-btn">+ New chat</button>
+    <div id="chat-list" class="chat-list"></div>
+    {% if not current_user %}
+    <p class="chat-sidebar-note">Signed-out chats are kept only for this browser session and disappear when it ends.</p>
+    {% endif %}
+  </aside>
 
-<div id="chat-log" class="chat-log">
-  <div class="chat-suggestions">
-    <span class="chat-suggestions-title">Try asking:</span>
-    <button type="button" class="chat-suggestion">What's a concerning CVE being actively exploited right now?</button>
-    <button type="button" class="chat-suggestion">What TTPs exploit CVE-2024-3400 and how do I mitigate it?</button>
-    <button type="button" class="chat-suggestion">What mitigates T1055?</button>
-    <button type="button" class="chat-suggestion">What techniques does APT29 use?</button>
+  <div class="chat-main">
+    <h1>APT_Watch</h1>
+    <p class="lede">
+      Ask about a CVE, technique, mitigation, or threat actor. Answers come from a
+      local LLM restricted to facts retrieved from this database — every claim is
+      backed by a source, and mentioned entities are clickable. Facts marked
+      <span class="tag tag-derived">derived</span> come from an inferred
+      CWE&rarr;CAPEC&rarr;ATT&amp;CK crosswalk, not a direct MITRE mapping.
+    </p>
+
+    <div id="chat-log" class="chat-log">
+      <div class="chat-suggestions">
+        <span class="chat-suggestions-title">Try asking:</span>
+        <button type="button" class="chat-suggestion">What's a concerning CVE being actively exploited right now?</button>
+        <button type="button" class="chat-suggestion">What TTPs exploit CVE-2024-3400 and how do I mitigate it?</button>
+        <button type="button" class="chat-suggestion">What mitigates T1055?</button>
+        <button type="button" class="chat-suggestion">What techniques does APT29 use?</button>
+      </div>
+    </div>
+
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" type="text" placeholder="Ask about a CVE, technique, mitigation, or threat actor..." autocomplete="off">
+      <button type="submit">Ask</button>
+    </form>
   </div>
-</div>
 
-<form id="chat-form" class="chat-form">
-  <input id="chat-input" type="text" placeholder="Ask about a CVE, technique, mitigation, or threat actor..." autocomplete="off">
-  <button type="submit">Ask</button>
-</form>
+  <aside id="view-panel" class="view-panel">
+    <p class="view-panel-empty">Click a highlighted CVE, technique, mitigation, or actor in a reply to see details here.</p>
+  </aside>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script>
+  window.APTWATCH_USER = {{ current_user | tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}

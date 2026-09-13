@@ -69,13 +69,16 @@ python main.py
 ```
 
 Then open http://127.0.0.1:5000/ — **Chat is the home page.** Everything else
-(Actors, Techniques, Software, Mitigations, and an Overview dashboard) lives
-under the **Library** dropdown in the nav bar, at `/library/...`:
+(Actors, Techniques, Software, Mitigations, CVEs, and an Overview dashboard)
+lives under the **Library** dropdown in the nav bar, at `/library/...`:
 
 - **Actors** — ATT&CK groups, their aliases, techniques used, and software used
 - **Techniques** — which actors use each technique and which mitigations apply to it
 - **Software** — malware/tools and which actors use them
 - **Mitigations** — which techniques each mitigation addresses
+- **CVEs** — CISA KEV entries plus the same CWE→CAPEC→ATT&CK crosswalk chat uses,
+  so what chat says about a CVE and what its Library page shows are always the
+  same underlying query (`intel.lookup_cve`)
 
 `main.py` runs the built-in Flask dev server with debug mode on, for local use
 only. Custom error pages are included for 400, 403, 404, 405, and 500
@@ -121,6 +124,16 @@ Pipeline for each question (see `app/nlp.py`, `app/intel.py`, `app/llm.py`,
    retrieved facts — not parsed out of the model's text — so citations stay
    accurate even if the model's wording is imperfect.
 
+The chat page is a 3-column layout: a left sidebar of saved chats, the chat
+itself in the center, and a right-hand **view panel** on the right. Any CVE,
+technique, mitigation, or actor ID mentioned in a reply is clickable — but
+only if it was one of the IDs actually verified against the retrieved facts
+(`app/linkify.py` reuses the same `llm.allowed_ids()` check the hallucination
+guard uses, so an unverified/fabricated ID never gets a link either). Clicking
+one fetches `/api/preview/<type>/<id>` (`app/preview.py`) and renders a short
+preview in the view panel — no page navigation — with an "Open full page"
+link to the real Library page for the full detail.
+
 ### Model setup
 
 Chat needs a local GGUF model file and `llama-cpp-python`. Tested with
@@ -152,6 +165,37 @@ The model file and `data/nvd_cache.duckdb` (the on-demand NVD lookup cache —
 kept as a separate file so the main read-only `data/cti.duckdb` connection
 never needs write access) are both gitignored.
 
+## Accounts & saved chats
+
+- **Not signed in:** chats are saved in the browser's `sessionStorage` only —
+  never sent to the server. They persist across page reloads but disappear
+  once the browser tab/session ends, by design.
+- **Signed in with Google:** chats are saved server-side as
+  `data/chats/<google_sub>.json` (one file per user; gitignored — it's user
+  data, not app data) and are available from any device once signed in.
+
+Google sign-in is optional and the app works fully without it (the sign-in
+button in the nav simply doesn't appear if it isn't configured). To enable it:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/) → APIs &
+   Services → Credentials, create an OAuth 2.0 Client ID (type: Web
+   application).
+2. Add `http://127.0.0.1:5000/auth/callback/google` as an authorized redirect URI.
+3. Create a `.env` file in the project root (gitignored) with:
+   ```
+   GOOGLE_CLIENT_ID=your-client-id
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   APTWATCH_SECRET_KEY=any-random-string
+   ```
+   `main.py` loads this automatically via `python-dotenv`. `APTWATCH_SECRET_KEY`
+   signs Flask's session cookie; without it the app still runs, using a random
+   key generated at startup (with a warning) — fine for a quick local test,
+   but it means every restart signs everyone out.
+
+Facebook/other providers aren't implemented yet — Facebook Login requires
+HTTPS and app review even in development mode, which is more setup than fits
+a local dev app right now.
+
 ## Project layout
 
 - `ingest/attack.py`, `ingest/capec.py`, `ingest/cve.py` — implemented ingest
@@ -161,15 +205,20 @@ never needs write access) are both gitignored.
 - `resolve/aliases.py` — actor alias resolution across sources (not yet implemented)
 - `model/schema.sql` — full schema reference for both database files
 - `app/` — Flask application:
-  - `routes.py` (mounted at `/library`), `templates/*.html` (excl. `chat.html`) — the browsing UI
-  - `chat.py` (mounted at `/`) — the chat home page and `/ask` API
+  - `routes.py` (mounted at `/library`), `templates/*.html` (excl. `chat.html`) — the browsing UI, including the CVE list/detail pages
+  - `chat.py` (mounted at `/`) — the chat home page, `/ask` API, and the `/api/chats/*` saved-chat CRUD API
   - `nlp.py` — entity extraction for chat
-  - `intel.py` — fact retrieval + source citation for chat (the only module that queries the DB for chat)
-  - `llm.py` — local LLM loading and prompting
-  - `templates/chat.html`, `static/js/chat.js` — the chat page's markup/JS
+  - `intel.py` — fact retrieval + source citation for chat and the CVE Library page (the only module that queries the DB for facts)
+  - `llm.py` — local LLM loading, prompting, and the fabricated-ID guard
+  - `linkify.py` — turns verified IDs in an answer into clickable Library links
+  - `preview.py` — `/api/preview/<type>/<id>` API backing the view panel
+  - `auth.py` — Google OAuth (Authlib), session-based `current_user()`, `login_required`
+  - `chats_store.py` — reads/writes `data/chats/<user_id>.json`
+  - `templates/chat.html`, `static/js/chat.js` — the 3-column chat page's markup/JS
   - `db.py`, `cache.py` — read-only main DB connection, writable NVD cache connection
-- `main.py` — Flask app entry point
+- `main.py` — Flask app entry point; loads `.env` via `python-dotenv`
 - `models/` — local GGUF model files (gitignored)
 - `data/cti.duckdb` — built database, committed as a snapshot
 - `data/nvd_cache.duckdb` — on-demand NVD lookup cache (gitignored)
+- `data/chats/` — per-user saved chats for signed-in users (gitignored)
 - `data/raw/` — downloaded source data (regenerated by ingest scripts, not committed)

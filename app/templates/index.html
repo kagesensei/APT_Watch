@@ -21,5 +21,9 @@
     <span class="stat-value">{{ counts.mitigations }}</span>
     <span class="stat-label">Mitigations</span>
   </a>
+  <a class="stat-card" href="{{ url_for('main.cves') }}">
+    <span class="stat-value">{{ counts.cves }}</span>
+    <span class="stat-label">CVEs</span>
+  </a>
 </div>
 {% endblock %}
