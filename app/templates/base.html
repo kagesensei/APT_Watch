@@ -14,6 +14,7 @@
       <a href="{{ url_for('main.techniques') }}">Techniques</a>
       <a href="{{ url_for('main.software') }}">Software</a>
       <a href="{{ url_for('main.mitigations') }}">Mitigations</a>
+      <a href="{{ url_for('chat.index') }}">Chat</a>
     </nav>
   </header>
   <main class="container">
@@ -22,5 +23,6 @@
   <footer class="site-footer">
     <span>Data from <a href="https://attack.mitre.org/" target="_blank" rel="noopener">MITRE ATT&amp;CK</a></span>
   </footer>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

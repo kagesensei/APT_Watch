@@ -1,6 +1,7 @@
 from flask import Flask, render_template
 from werkzeug.exceptions import HTTPException
 
+from . import cache as cache_module
 from . import db as db_module
 
 
@@ -8,10 +9,15 @@ def create_app():
     app = Flask(__name__)
 
     db_module.init_app(app)
+    cache_module.init_app(app)
 
     from .routes import bp
 
     app.register_blueprint(bp)
+
+    from .chat import bp as chat_bp
+
+    app.register_blueprint(chat_bp)
 
     register_error_handlers(app)
 
