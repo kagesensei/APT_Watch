@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ mitigation_name }} - APT_Watch{% endblock %}
+{% block content %}
+<p class="back-link"><a href="{{ url_for('main.mitigations') }}">&larr; All mitigations</a></p>
+<h1>{{ mitigation_name }}</h1>
+<p class="meta">ATT&amp;CK ID: <strong>{{ mitigation_id }}</strong></p>
+
+<h2>Mitigates techniques ({{ techniques|length }})</h2>
+{% if techniques %}
+<ul class="pill-list">
+  {% for technique_id, technique_name in techniques %}
+  <li><a href="{{ url_for('main.technique_detail', technique_id=technique_id) }}">{{ technique_id }} &mdash; {{ technique_name or 'Unknown' }}</a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No known techniques mitigated.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,14 @@
+{% macro render(page, size, total, endpoint, q) %}
+{% set last_page = ((total - 1) // size) + 1 if total > 0 else 1 %}
+<div class="pagination">
+  <span class="pagination-info">{{ total }} result{{ 's' if total != 1 else '' }} &middot; page {{ page }} of {{ last_page }}</span>
+  <div class="pagination-links">
+    {% if page > 1 %}
+      <a href="{{ url_for(endpoint, q=q, page=page - 1) }}">&larr; Previous</a>
+    {% endif %}
+    {% if page < last_page %}
+      <a href="{{ url_for(endpoint, q=q, page=page + 1) }}">Next &rarr;</a>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

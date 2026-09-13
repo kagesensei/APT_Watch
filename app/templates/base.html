@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}APT_Watch{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{{ url_for('main.index') }}">APT_Watch</a>
+    <nav>
+      <a href="{{ url_for('main.actors') }}">Actors</a>
+      <a href="{{ url_for('main.techniques') }}">Techniques</a>
+      <a href="{{ url_for('main.software') }}">Software</a>
+      <a href="{{ url_for('main.mitigations') }}">Mitigations</a>
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <span>Data from <a href="https://attack.mitre.org/" target="_blank" rel="noopener">MITRE ATT&amp;CK</a></span>
+  </footer>
+</body>
+</html>

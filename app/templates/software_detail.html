@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ software[1] }} - APT_Watch{% endblock %}
+{% block content %}
+<p class="back-link"><a href="{{ url_for('main.software') }}">&larr; All software</a></p>
+<h1>{{ software[1] }} <span class="tag">{{ software[2] }}</span></h1>
+
+<h2>Used by actors ({{ actors|length }})</h2>
+{% if actors %}
+<ul class="pill-list">
+  {% for stix_id, name in actors %}
+  <li><a href="{{ url_for('main.actor_detail', stix_id=stix_id) }}">{{ name }}</a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No known actors use this software.</p>
+{% endif %}
+{% endblock %}

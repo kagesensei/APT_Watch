@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}APT_Watch{% endblock %}
+{% block content %}
+<h1>APT_Watch</h1>
+<p class="lede">Browse MITRE ATT&amp;CK threat actors, their techniques, software, and mitigations.</p>
+
+<div class="stat-grid">
+  <a class="stat-card" href="{{ url_for('main.actors') }}">
+    <span class="stat-value">{{ counts.actors }}</span>
+    <span class="stat-label">Actors</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('main.techniques') }}">
+    <span class="stat-value">{{ counts.techniques }}</span>
+    <span class="stat-label">Techniques</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('main.software') }}">
+    <span class="stat-value">{{ counts.software }}</span>
+    <span class="stat-label">Software</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('main.mitigations') }}">
+    <span class="stat-value">{{ counts.mitigations }}</span>
+    <span class="stat-label">Mitigations</span>
+  </a>
+</div>
+{% endblock %}

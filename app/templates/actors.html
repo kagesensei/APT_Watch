@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "_pagination.html" as pagination %}
+{% block title %}Actors - APT_Watch{% endblock %}
+{% block content %}
+<h1>Actors</h1>
+<form class="search-form" method="get">
+  <input type="text" name="q" placeholder="Search by name or alias" value="{{ q }}">
+  <button type="submit">Search</button>
+</form>
+
+{% if actors %}
+<table class="data-table">
+  <thead><tr><th>ATT&amp;CK ID</th><th>Name</th><th>Aliases</th></tr></thead>
+  <tbody>
+    {% for stix_id, attack_id, name, aliases in actors %}
+    <tr>
+      <td>{{ attack_id }}</td>
+      <td><a href="{{ url_for('main.actor_detail', stix_id=stix_id) }}">{{ name }}</a></td>
+      <td>{{ aliases.replace(';', ', ') if aliases else '' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{{ pagination.render(page, size, total, 'main.actors', q) }}
+{% else %}
+<p class="empty">No actors found.</p>
+{% endif %}
+{% endblock %}

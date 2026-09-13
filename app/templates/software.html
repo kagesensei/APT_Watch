@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "_pagination.html" as pagination %}
+{% block title %}Software - APT_Watch{% endblock %}
+{% block content %}
+<h1>Software</h1>
+<form class="search-form" method="get">
+  <input type="text" name="q" placeholder="Search by name" value="{{ q }}">
+  <button type="submit">Search</button>
+</form>
+
+{% if software %}
+<table class="data-table">
+  <thead><tr><th>Name</th><th>Type</th></tr></thead>
+  <tbody>
+    {% for software_id, software_name, software_type in software %}
+    <tr>
+      <td><a href="{{ url_for('main.software_detail', software_id=software_id) }}">{{ software_name }}</a></td>
+      <td><span class="tag">{{ software_type }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{{ pagination.render(page, size, total, 'main.software', q) }}
+{% else %}
+<p class="empty">No software found.</p>
+{% endif %}
+{% endblock %}

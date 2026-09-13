@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ actor[2] }} - APT_Watch{% endblock %}
+{% block content %}
+<p class="back-link"><a href="{{ url_for('main.actors') }}">&larr; All actors</a></p>
+<h1>{{ actor[2] }}</h1>
+<p class="meta">ATT&amp;CK ID: <strong>{{ actor[1] }}</strong></p>
+{% if actor[3] %}
+<p class="meta">Aliases: {{ actor[3].replace(';', ', ') }}</p>
+{% endif %}
+
+<h2>Techniques used ({{ techniques|length }})</h2>
+{% if techniques %}
+<ul class="pill-list">
+  {% for technique_id, technique_name in techniques %}
+  <li><a href="{{ url_for('main.technique_detail', technique_id=technique_id) }}">{{ technique_id }} &mdash; {{ technique_name }}</a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No known techniques.</p>
+{% endif %}
+
+<h2>Software used ({{ software|length }})</h2>
+{% if software %}
+<ul class="pill-list">
+  {% for software_id, software_name, software_type in software %}
+  <li><a href="{{ url_for('main.software_detail', software_id=software_id) }}">{{ software_name }}</a> <span class="tag">{{ software_type }}</span></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No known software.</p>
+{% endif %}
+{% endblock %}

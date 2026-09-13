@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ error.code }} - APT_Watch{% endblock %}
+{% block content %}
+<div class="error-page">
+  <p class="error-code">{{ error.code }}</p>
+  <h1>{{ error.name }}</h1>
+  <p class="error-message">{{ error.description }}</p>
+  <p class="back-link"><a href="{{ url_for('main.index') }}">&larr; Back to APT_Watch</a></p>
+</div>
+{% endblock %}

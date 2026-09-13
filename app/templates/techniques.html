@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "_pagination.html" as pagination %}
+{% block title %}Techniques - APT_Watch{% endblock %}
+{% block content %}
+<h1>Techniques</h1>
+<form class="search-form" method="get">
+  <input type="text" name="q" placeholder="Search by ID or name" value="{{ q }}">
+  <button type="submit">Search</button>
+</form>
+
+{% if techniques %}
+<table class="data-table">
+  <thead><tr><th>ID</th><th>Name</th></tr></thead>
+  <tbody>
+    {% for technique_id, technique_name in techniques %}
+    <tr>
+      <td>{{ technique_id }}</td>
+      <td><a href="{{ url_for('main.technique_detail', technique_id=technique_id) }}">{{ technique_name }}</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{{ pagination.render(page, size, total, 'main.techniques', q) }}
+{% else %}
+<p class="empty">No techniques found.</p>
+{% endif %}
+{% endblock %}
