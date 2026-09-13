@@ -249,6 +249,20 @@ Facebook/other providers aren't implemented yet — Facebook Login requires
 HTTPS and app review even in development mode, which is more setup than fits
 a local dev app right now.
 
+## Testing
+
+```bash
+pytest
+```
+
+119 tests covering entity extraction, the CVE→CWE→CAPEC→ATT&CK crosswalk
+(both success and dead-end branches), IOC lookups, the chart builders, and
+every Flask route — run in a few seconds against the real committed
+`data/cti.duckdb` snapshot, with the local LLM and NVD network calls mocked
+out. See `TESTING.md` for what each test file covers and a manual walkthrough
+for the parts that need a browser or the local LLM (chat answer quality,
+dashboard visuals, Google sign-in).
+
 ## Project layout
 
 - `ingest/attack.py`, `ingest/capec.py`, `ingest/cve.py`, `ingest/ioc.py` —
@@ -257,6 +271,7 @@ a local dev app right now.
   intel source ingests (not yet implemented)
 - `resolve/aliases.py` — actor alias resolution across sources (not yet implemented)
 - `model/schema.sql` — full schema reference for both database files
+- `tests/` — pytest suite (see Testing above); `TESTING.md` — what it covers plus a manual walkthrough
 - `app/` — Flask application:
   - `routes.py` (mounted at `/library`), `templates/*.html` (excl. `chat.html`, `scan.html`) — the browsing UI, including the CVE list/detail pages
   - `chat.py` (mounted at `/`) — the chat home page, `/ask` API, and the `/api/chats/*` saved-chat CRUD API
