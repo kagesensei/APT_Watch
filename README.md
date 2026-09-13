@@ -101,14 +101,23 @@ Pipeline for each question (see `app/nlp.py`, `app/intel.py`, `app/llm.py`,
 1. **Extract** CVE/technique/mitigation IDs by regex, and actor/software
    names via word-boundary/fuzzy matching against `actor`/`actor_software`
    (`RapidFuzz`) — this is a small, deterministic layer, not a general-purpose
-   NLP model.
+   NLP model. If the question names nothing on its own (a follow-up like
+   "what mitigates this CVE?"), extraction is retried against the last few
+   messages too — the frontend sends a rolling `history` array with each
+   request — so references to something already discussed still resolve.
 2. **Retrieve** structured facts for each entity found, each one tagged
    `[DIRECT]` (stated outright by MITRE/NVD/CISA) or `[DERIVED]` (reached via
    the CVE→CWE→CAPEC→ATT&CK crosswalk above).
 3. **Answer**: the facts are handed to a local LLM with a system prompt that
    forbids it from using anything else, and requires it to flag derived facts
    as inferred when it uses them.
-4. **Cite**: the "Sources" panel under each answer is built directly from the
+4. **Verify**: the model's reply is scanned for any CVE/CWE/CAPEC/technique/
+   mitigation/group ID that doesn't appear anywhere in the facts it was given.
+   Testing showed the model will occasionally invent a plausible-looking ID
+   (e.g. a CAPEC number) despite the system prompt telling it not to — this
+   check catches that and appends a visible warning naming the unverified
+   identifier, rather than silently letting it through.
+5. **Cite**: the "Sources" panel under each answer is built directly from the
    retrieved facts — not parsed out of the model's text — so citations stay
    accurate even if the model's wording is imperfect.
 
