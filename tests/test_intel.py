@@ -2,7 +2,7 @@ import requests
 
 from app import intel
 
-# Concrete fixture values pulled from the committed data/cti.duckdb snapshot
+# Concrete fixture values pulled from a locally built data/cti.duckdb
 # (see tests/conftest.py for why real data, not a synthetic DB, is used).
 CROSSWALK_HIT_CVE = "CVE-2026-84869"          # CWE-862 -> CAPEC -> T1211
 CAPEC_BUT_NO_TECHNIQUE_CVE = "CVE-2026-86060"  # CWE-88 maps to CAPEC(s), none map to a technique

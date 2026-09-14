@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: preflight
+        name: APT_Watch preflight (pylint, mypy, bandit, pytest)
+        entry: python preflight.py
+        language: system
+        pass_filenames: false
+        always_run: true

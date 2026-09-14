@@ -4,6 +4,7 @@ __pycache__/
 .idea/
 data/raw/
 data/staging/
+data/cti.duckdb
 data/nvd_cache.duckdb
 data/chats/
 models/

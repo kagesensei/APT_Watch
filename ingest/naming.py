@@ -22,20 +22,28 @@ SEED_DIR = ROOT / "data" / "seed"
 
 
 class NamingConventionEntry(TypedDict):
-    """One vendor naming-scheme word and what it denotes."""
+    """One vendor naming-scheme word and what it denotes, sourced from that
+    vendor's own published naming-convention page.
+    """
 
     vendor: str
     term: str
     category: str
     meaning: str
+    source_url: str
+    retrieved: str
 
 
 class AliasNoteEntry(TypedDict):
-    """One actor alias's documented etymology."""
+    """One actor alias's documented etymology, sourced from a primary or
+    reputable secondary source.
+    """
 
     attack_id: str
     alias: str
     note: str
+    source_url: str
+    retrieved: str
 
 
 def load_json_seed(filename: str) -> list[dict[str, object]]:
@@ -45,35 +53,43 @@ def load_json_seed(filename: str) -> list[dict[str, object]]:
     return data
 
 
-def naming_convention_rows(entries: list[NamingConventionEntry]) -> list[tuple[str, str, str, str]]:
+def naming_convention_rows(
+    entries: list[NamingConventionEntry],
+) -> list[tuple[str, str, str, str, str, str]]:
     """One row per naming-convention entry, matching the table's column order."""
-    return [(e["vendor"], e["term"], e["category"], e["meaning"]) for e in entries]
+    return [
+        (e["vendor"], e["term"], e["category"], e["meaning"], e["source_url"], e["retrieved"])
+        for e in entries
+    ]
 
 
-def alias_note_rows(entries: list[AliasNoteEntry]) -> list[tuple[str, str, str]]:
+def alias_note_rows(entries: list[AliasNoteEntry]) -> list[tuple[str, str, str, str, str]]:
     """One row per alias-note entry, matching the table's column order."""
-    return [(e["attack_id"], e["alias"], e["note"]) for e in entries]
+    return [
+        (e["attack_id"], e["alias"], e["note"], e["source_url"], e["retrieved"]) for e in entries
+    ]
 
 
 def write_tables(
     con: duckdb.DuckDBPyConnection,
-    naming_rows: list[tuple[str, str, str, str]],
-    note_rows: list[tuple[str, str, str]],
+    naming_rows: list[tuple[str, str, str, str, str, str]],
+    note_rows: list[tuple[str, str, str, str, str]],
 ) -> None:
     """Create (or replace) and populate the naming_convention and
     actor_alias_note tables.
     """
     con.execute(
         "CREATE OR REPLACE TABLE naming_convention("
-        "vendor VARCHAR, term VARCHAR, category VARCHAR, meaning VARCHAR)"
+        "vendor VARCHAR, term VARCHAR, category VARCHAR, meaning VARCHAR, "
+        "source_url VARCHAR, retrieved DATE)"
     )
-    con.executemany("INSERT INTO naming_convention VALUES (?,?,?,?)", naming_rows)
+    con.executemany("INSERT INTO naming_convention VALUES (?,?,?,?,?,?)", naming_rows)
 
     con.execute(
         "CREATE OR REPLACE TABLE actor_alias_note("
-        "attack_id VARCHAR, alias VARCHAR, note VARCHAR)"
+        "attack_id VARCHAR, alias VARCHAR, note VARCHAR, source_url VARCHAR, retrieved DATE)"
     )
-    con.executemany("INSERT INTO actor_alias_note VALUES (?,?,?)", note_rows)
+    con.executemany("INSERT INTO actor_alias_note VALUES (?,?,?,?,?)", note_rows)
 
 
 def check_load_count(con: duckdb.DuckDBPyConnection, table: str, expected: int) -> str | None:

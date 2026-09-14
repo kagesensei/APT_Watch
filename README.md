@@ -91,18 +91,16 @@ python -c "import duckdb; print(duckdb.connect('data/cti.duckdb').sql('SELECT * 
 Once `data/cti.duckdb` exists, run the Flask app:
 
 ```bash
-pip install -r requirements-dev.txt   # now required to run the app, not just to lint it
+pip install -r requirements.txt
 python main.py
 ```
 
-`python main.py` runs a pre-flight quality gate — `pylint`, `mypy --strict`,
-`bandit`, and the full `pytest` suite — before the server starts listening,
-and refuses to start if any of them fail (see `preflight.py`). This takes
-several seconds and needs `requirements-dev.txt` installed. Set
-`APTWATCH_SKIP_PREFLIGHT=1` to skip it for fast local iteration (e.g. while
-mid-edit and deliberately red) — CI (`.github/workflows/ci.yml`) still runs
-every check unconditionally on every push, so nothing skips review
-permanently.
+By default `python main.py` starts straight up — it does **not** run the
+pylint/mypy/bandit/pytest gate (see "Code quality and security" below for
+where that gate actually runs: a pre-commit hook and CI). Set
+`APTWATCH_RUN_PREFLIGHT=1` if you want that same gate to run once before the
+dev server starts, as an optional local sanity check; it needs
+`requirements-dev.txt` installed and takes several seconds.
 
 Then open http://127.0.0.1:5000/ — **Chat is the home page.** Everything else
 (Actors, Techniques, Software, Mitigations, CVEs, and an Overview dashboard)
@@ -283,11 +281,12 @@ pytest
 150 tests covering entity extraction, the CVE→CWE→CAPEC→ATT&CK crosswalk
 (both success and dead-end branches), IOC lookups, the chart builders, the
 design-by-contract helpers in `contracts.py`, naming-convention/alias-etymology
-lookups, and every Flask route — run in a few seconds against the real
-committed `data/cti.duckdb` snapshot, with the local LLM and NVD network calls
-mocked out. See `TESTING.md` for what each test file covers and a manual
-walkthrough for the parts that need a browser or the local LLM (chat answer
-quality, dashboard visuals, Google sign-in).
+lookups, and every Flask route — run in a few seconds against your locally
+built `data/cti.duckdb` (see Data ingest above; DB-dependent tests skip
+automatically if it doesn't exist yet), with the local LLM and NVD network
+calls mocked out. See `TESTING.md` for what each test file covers and a
+manual walkthrough for the parts that need a browser or the local LLM (chat
+answer quality, dashboard visuals, Google sign-in).
 
 ## Code quality and security
 
@@ -296,10 +295,28 @@ safety-critical code — see `POWER10.md` for what each rule means here and
 why. In short: small, single-purpose functions; every loop's bound is
 either obvious or enforced by `contracts.bounded()`; every DB/API return
 value is checked (`contracts.not_none()` and friends); and `pylint`, `mypy
---strict`, and `bandit` all run in CI on every push, alongside `pytest` —
-**and all four run again every time `python main.py` starts** (see
-`preflight.py`), so a broken local checkout can't serve traffic even if
-nobody remembered to run CI.
+--strict`, and `bandit` all run alongside `pytest` in two places:
+
+- **CI** (`.github/workflows/ci.yml`) runs all four, as separate steps, on
+  every push.
+- **A pre-commit hook** (`.pre-commit-config.yaml`, running `preflight.py`)
+  runs all four together on every `git commit`, so a broken checkout is
+  caught before it's even pushed, not just before it's merged. Install it
+  once per clone:
+
+  ```bash
+  pip install -r requirements-dev.txt
+  pre-commit install
+  ```
+
+  `git commit --no-verify` bypasses it for a deliberate work-in-progress
+  commit, the same as any other pre-commit hook.
+
+`python main.py` does **not** run this gate by default (see "Web
+interface" above) — starting the dev server and verifying code quality are
+separate concerns here, kept out of each other's way.
+
+To run the checks by hand:
 
 ```bash
 pip install -r requirements-dev.txt
@@ -338,10 +355,11 @@ pytest
   - `templates/scan.html`, `static/js/scan.js` — the scan page's markup/JS
   - `db.py`, `cache.py` — read-only main DB connection, writable NVD cache connection
   - `queries.py` — small shared DB query helpers (`count`, `overview_counts`, `searchable_list`) used by `routes.py`, `preview.py`, `dashboard.py`, and `intel.py`
-- `main.py` — Flask app entry point; loads `.env` via `python-dotenv`, runs `preflight.py`'s gate before serving
-- `preflight.py` — the pylint/mypy/bandit/pytest startup gate (`APTWATCH_SKIP_PREFLIGHT=1` to bypass)
+- `main.py` — Flask app entry point; loads `.env` via `python-dotenv`; runs the preflight gate only if `APTWATCH_RUN_PREFLIGHT=1`
+- `preflight.py` — the pylint/mypy/bandit/pytest quality gate, run by the pre-commit hook and (as separate steps) by CI
+- `.pre-commit-config.yaml` — runs `preflight.py` on every `git commit` (`pre-commit install` once per clone)
 - `models/` — local GGUF model files (gitignored)
-- `data/cti.duckdb` — built database, committed as a snapshot
+- `data/cti.duckdb` — built database, gitignored; run the ingest scripts (see Data ingest above) to build it locally
 - `data/nvd_cache.duckdb` — on-demand NVD lookup cache (gitignored)
 - `data/chats/` — per-user saved chats for signed-in users (gitignored)
 - `data/raw/` — downloaded source data (regenerated by ingest scripts, not committed)

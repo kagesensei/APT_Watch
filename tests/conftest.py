@@ -9,7 +9,7 @@ DB_PATH = ROOT / "data" / "cti.duckdb"
 
 @pytest.fixture(scope="session")
 def db():
-    """Read-only connection to the real, committed cti.duckdb snapshot.
+    """Read-only connection to your locally built cti.duckdb (gitignored, not committed).
 
     These are integration tests against real ingested data rather than a
     synthetic fixture DB, so assertions key off values queried from the

@@ -2,11 +2,15 @@
   {
     "attack_id": "G0006",
     "alias": "Comment Crew",
-    "note": "Named by Mandiant in its February 2013 \"APT1\" report for the group's technique of embedding encoded backdoor tasking inside HTML comment fields on otherwise-ordinary web pages, using them as a covert command-and-control channel. \"Comment Panda\" and \"Comment Group\" are other vendors' variants of the same name."
+    "note": "Mandiant's February 2013 \"APT1\" report states that WEBC2 backdoors -- APT1's best-known backdoor family, whose older versions retrieved commands hidden between HTML comment tags on a webpage fetched from a C2 server -- are \"the reason why some security companies refer to APT1 as the Comment Crew.\" Mandiant documented the technique behind the name rather than coining the name itself. \"Comment Panda\" and \"Comment Group\" are other vendors' variants of the same name.",
+    "source_url": "https://nsarchive.gwu.edu/media/21484/ocr",
+    "retrieved": "2026-09-14"
   },
   {
     "attack_id": "G0034",
     "alias": "Sandworm Team",
-    "note": "Named by iSight Partners in 2014 after researchers found references to Frank Herbert's science-fiction Dune novels -- including the giant sandworms of the planet Arrakis -- in the group's malware and infrastructure artifacts."
+    "note": "iSight Partners named this group \"Sandworm\" in October 2014 after finding multiple references to Frank Herbert's science-fiction Dune novels in the group's malware code.",
+    "source_url": "https://techspective.net/2014/10/14/closer-look-sandworm-cyber-espionage-threat/",
+    "retrieved": "2026-09-14"
   }
 ]

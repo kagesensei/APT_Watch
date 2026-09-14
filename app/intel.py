@@ -719,10 +719,17 @@ def parse_aliases(aliases_field: str | None) -> list[str]:
 
 
 def _naming_fact(
-    vendor: str, term: str, category: str, meaning: str, alias: str | None = None
+    vendor: str,
+    term: str,
+    category: str,
+    meaning: str,
+    source_url: str,
+    alias: str | None = None,
 ) -> Fact:
     """One fact explaining a vendor naming-scheme word, optionally in the
-    context of a specific alias that uses it.
+    context of a specific alias that uses it. source_url is the vendor's own
+    published naming-scheme page, verified against this row -- see
+    model/schema.sql's naming_convention table.
     """
     if category == "nation-state":
         meaning_clause = f"suspected {meaning}-nexus (state-sponsored) activity"
@@ -745,7 +752,8 @@ def _naming_fact(
         "derived": False,
         "category": "naming_note",
         "source": _source(
-            f"{vendor} naming convention", term, f"{vendor} adversary naming convention", None
+            f"{vendor} naming convention", term, f"{vendor} adversary naming convention",
+            source_url,
         ),
     }
 
@@ -762,12 +770,12 @@ def naming_convention_facts(aliases: list[str], db: duckdb.DuckDBPyConnection) -
     if not aliases:
         return []
     facts = []
-    for vendor, term, category, meaning in db.execute(
-        "SELECT vendor, term, category, meaning FROM naming_convention"
+    for vendor, term, category, meaning, source_url in db.execute(
+        "SELECT vendor, term, category, meaning, source_url FROM naming_convention"
     ).fetchall():
         alias = _matching_alias(term, aliases)
         if alias:
-            facts.append(_naming_fact(vendor, term, category, meaning, alias))
+            facts.append(_naming_fact(vendor, term, category, meaning, source_url, alias))
     return facts
 
 
@@ -777,16 +785,16 @@ def alias_note_facts(attack_id: str, db: duckdb.DuckDBPyConnection) -> list[Fact
     """
     precondition(bool(attack_id), "attack_id must not be empty")
     rows = db.execute(
-        "SELECT alias, note FROM actor_alias_note WHERE attack_id = ?", [attack_id]
+        "SELECT alias, note, source_url FROM actor_alias_note WHERE attack_id = ?", [attack_id]
     ).fetchall()
     return [
         {
             "text": f"Why the name '{alias}': {note}",
             "derived": False,
             "category": "naming_note",
-            "source": _source("Vendor reporting", alias, f"Etymology of '{alias}'", None),
+            "source": _source("Vendor reporting", alias, f"Etymology of '{alias}'", source_url),
         }
-        for alias, note in rows
+        for alias, note, source_url in rows
     ]
 
 
@@ -799,12 +807,13 @@ def lookup_naming_term(
     """
     precondition(bool(term), "term must not be empty")
     rows = db.execute(
-        "SELECT vendor, term, category, meaning FROM naming_convention "
+        "SELECT vendor, term, category, meaning, source_url FROM naming_convention "
         "WHERE lower(term) = lower(?)",
         [term],
     ).fetchall()
     facts = [
-        _naming_fact(vendor, term_, category, meaning) for vendor, term_, category, meaning in rows
+        _naming_fact(vendor, term_, category, meaning, source_url)
+        for vendor, term_, category, meaning, source_url in rows
     ]
     return facts, dedup_sources(facts)
 

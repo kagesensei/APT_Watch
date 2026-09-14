@@ -12,12 +12,12 @@ pip install -r requirements.txt   # now includes pytest
 pytest
 ```
 
-150 tests, ~4s, no network and no GPU/model required. They run against the
-real committed `data/cti.duckdb` snapshot (read-only) plus temp/mocked files
-for anything that writes (NVD cache, saved chats) — nothing in `data/` is
-modified. If `data/cti.duckdb` doesn't exist yet, DB-dependent tests skip
-automatically (`tests/conftest.py`); run the ingest scripts first (see
-README's "Data ingest" section) to get full coverage.
+150 tests, ~4s, no network and no GPU/model required. They run against your
+locally built `data/cti.duckdb` (read-only, gitignored — not committed) plus
+temp/mocked files for anything that writes (NVD cache, saved chats) — nothing
+in `data/` is modified. If `data/cti.duckdb` doesn't exist yet, DB-dependent
+tests skip automatically (`tests/conftest.py`); run the ingest scripts first
+(see README's "Data ingest" section) to get full coverage.
 
 What's covered, by file:
 
@@ -53,9 +53,12 @@ reasoning behind each rule and the few narrow, commented exceptions
 (`# nosec B608` on the handful of queries whose WHERE clause shape, never
 its data, is assembled at runtime).
 
-They also run automatically every time `python main.py` starts —
-`preflight.py` runs all four and refuses to start the server if any fail.
-Set `APTWATCH_SKIP_PREFLIGHT=1` to bypass this for fast local iteration.
+They also run together, via `preflight.py`, as a pre-commit hook on every
+`git commit` — install it once per clone with `pre-commit install`
+(`.pre-commit-config.yaml`); bypass it for a deliberate work-in-progress
+commit with `git commit --no-verify`. `python main.py` does **not** run
+this gate by default; set `APTWATCH_RUN_PREFLIGHT=1` to run it once before
+the dev server starts, as an optional local sanity check.
 
 ## 3. Manual walkthrough
 

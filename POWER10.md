@@ -19,7 +19,7 @@ checked rule in `pyproject.toml`, `contracts.py`, or CI, not just a guideline.
 | 7 | Check the return value of every non-void function; check every parameter | mypy `strict = true` makes an unchecked/ignored return type a type error at the call site for anything typed `Optional`/a union. Every DB call result is checked for `None`/empty before use. Every route parameter is validated with `contracts.precondition()` before use in a query. Bandit's `B608` (SQL string building) additionally forces every SQL statement onto parameterized queries. |
 | 8 | Restrict the preprocessor to header guards and simple macros | No literal preprocessor in Python. Adapted as: no `exec`/`eval` (bandit `B102`/`B307`, pylint `eval-used`/`exec-used`), no metaclass or `__getattr__`-based magic, no monkey-patching of stdlib or third-party modules. |
 | 9 | Restrict pointer use: one level of dereferencing, no function pointers except a documented allowlist | Adapted as: no dynamic attribute-path chains, and callables passed as data (route handlers registered on a `Blueprint`, the one dispatch table in `app/nlp.py`'s IOC-type-to-extractor map) are the only higher-order-function use, and are enumerated up front rather than constructed dynamically. |
-| 10 | Compile with all warnings enabled, in pedantic mode, with zero warnings; run a static analyzer daily | `pylint` (near-default rule set, see `pyproject.toml`), `mypy --strict`, and `bandit` all run in CI (`.github/workflows/ci.yml`) on every push/PR, alongside `pytest`. A merge is blocked on any of the four failing. |
+| 10 | Compile with all warnings enabled, in pedantic mode, with zero warnings; run a static analyzer daily | `pylint` (near-default rule set, see `pyproject.toml`), `mypy --strict`, and `bandit` all run in CI (`.github/workflows/ci.yml`) on every push/PR, alongside `pytest`, and together via `preflight.py` as a pre-commit hook (`.pre-commit-config.yaml`) on every commit. A merge is blocked on any of the four failing; a commit is too, unless made with `--no-verify`. |
 
 ## Running the checks locally
 
@@ -31,9 +31,10 @@ bandit -c pyproject.toml -r app ingest resolve contracts.py main.py preflight.py
 pytest
 ```
 
-`python main.py` also runs all four automatically before serving (see
-`preflight.py`); `APTWATCH_SKIP_PREFLIGHT=1` bypasses that for local
-iteration without bypassing CI.
+`pre-commit install` (once per clone) wires `preflight.py` up to run all
+four together on every `git commit`. `python main.py` does not run this
+gate by default -- set `APTWATCH_RUN_PREFLIGHT=1` to run it once before the
+dev server starts, as an optional local sanity check.
 
 ## `contracts.py`
 

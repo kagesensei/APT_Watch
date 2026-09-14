@@ -1,16 +1,22 @@
-"""Pre-flight quality gate: pylint, mypy, bandit, and the pytest suite must
-all pass before the app is allowed to start.
+"""Quality gate: pylint, mypy, bandit, and the pytest suite must all pass.
 
-Power of 10 rule 10 asks for static analysis with zero warnings; running it
-only in CI means a broken local checkout can still serve traffic. This makes
-the gate part of starting the app at all, not just part of merging a PR.
+Power of 10 rule 10 asks for static analysis with zero warnings. This
+script is the one place that runs all four checks together; it's invoked
+from three places, each with a different opt-in policy it doesn't control:
+- The pre-commit hook (.pre-commit-config.yaml) runs it on every commit
+  (bypass that the normal pre-commit way, `git commit --no-verify`, if you
+  need to commit deliberately-red work in progress).
+- CI (.github/workflows/ci.yml) runs the same four checks unconditionally
+  on every push, as separate steps rather than via this script, so a
+  failure names the specific tool in the GitHub UI.
+- `python main.py` runs it only if APTWATCH_RUN_PREFLIGHT=1 is set (off by
+  default -- see main.py), for an optional local sanity check before
+  starting the dev server.
 
-Set APTWATCH_SKIP_PREFLIGHT=1 to bypass this for fast local iteration (e.g.
-while mid-edit and deliberately red) -- CI still runs every check
-unconditionally on every push, so nothing skips review permanently.
+This module itself has no skip flag: gating whether it runs at all is each
+caller's job, not this script's.
 """
 
-import os
 import pathlib
 
 # Every command run through this module is a hardcoded literal list below
@@ -47,10 +53,6 @@ CHECKS: list[tuple[str, list[str]]] = [
 ]
 
 
-def _skip_requested() -> bool:
-    return os.environ.get("APTWATCH_SKIP_PREFLIGHT", "").strip().lower() in ("1", "true", "yes")
-
-
 def run_check(name: str, command: list[str]) -> bool:
     """Run one quality-gate command, streaming its output; return whether it passed."""
     precondition(bool(name), "name must not be empty")
@@ -76,18 +78,13 @@ def run_check(name: str, command: list[str]) -> bool:
 
 
 def run_preflight() -> None:
-    """Run every quality-gate check; exit(1) if any fails, unless skipped."""
-    if _skip_requested():
-        print("APTWATCH_SKIP_PREFLIGHT is set -- skipping the pylint/mypy/bandit/pytest gate.")
-        return
-
+    """Run every quality-gate check; exit(1) if any fails."""
     print("Running pre-flight quality gate (pylint, mypy, bandit, pytest)...", flush=True)
     failed = [name for name, command in CHECKS if not run_check(name, command)]
 
     if failed:
         print(
-            f"\nPre-flight FAILED: {', '.join(failed)}. Fix the issue(s) above, or set "
-            "APTWATCH_SKIP_PREFLIGHT=1 to start anyway (not recommended).",
+            f"\nPre-flight FAILED: {', '.join(failed)}. Fix the issue(s) above and try again.",
             file=sys.stderr,
         )
         sys.exit(1)

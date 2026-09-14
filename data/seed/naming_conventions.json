@@ -3,84 +3,112 @@
     "vendor": "CrowdStrike",
     "term": "Bear",
     "category": "nation-state",
-    "meaning": "Russia"
+    "meaning": "Russia",
+    "source_url": "https://www.crowdstrike.com/en-us/blog/naming-adversaries-and-why-it-matters-to-security-teams/",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "CrowdStrike",
     "term": "Panda",
     "category": "nation-state",
-    "meaning": "China"
+    "meaning": "China",
+    "source_url": "https://www.crowdstrike.com/en-us/blog/naming-adversaries-and-why-it-matters-to-security-teams/",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "CrowdStrike",
     "term": "Kitten",
     "category": "nation-state",
-    "meaning": "Iran"
+    "meaning": "Iran",
+    "source_url": "https://www.crowdstrike.com/en-us/adversaries/",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "CrowdStrike",
     "term": "Chollima",
     "category": "nation-state",
-    "meaning": "North Korea"
+    "meaning": "North Korea",
+    "source_url": "https://www.crowdstrike.com/en-us/adversaries/",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "CrowdStrike",
     "term": "Spider",
     "category": "motivation",
-    "meaning": "financially motivated (eCrime)"
+    "meaning": "financially motivated (eCrime)",
+    "source_url": "https://www.crowdstrike.com/en-us/blog/naming-adversaries-and-why-it-matters-to-security-teams/",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "CrowdStrike",
     "term": "Jackal",
     "category": "motivation",
-    "meaning": "hacktivist"
+    "meaning": "hacktivist",
+    "source_url": "https://www.crowdstrike.com/en-us/blog/naming-adversaries-and-why-it-matters-to-security-teams/",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "Microsoft",
     "term": "Typhoon",
     "category": "nation-state",
-    "meaning": "China"
+    "meaning": "China",
+    "source_url": "https://learn.microsoft.com/en-us/unified-secops/microsoft-threat-actor-naming",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "Microsoft",
     "term": "Sandstorm",
     "category": "nation-state",
-    "meaning": "Iran"
+    "meaning": "Iran",
+    "source_url": "https://learn.microsoft.com/en-us/unified-secops/microsoft-threat-actor-naming",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "Microsoft",
     "term": "Blizzard",
     "category": "nation-state",
-    "meaning": "Russia"
+    "meaning": "Russia",
+    "source_url": "https://learn.microsoft.com/en-us/unified-secops/microsoft-threat-actor-naming",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "Microsoft",
     "term": "Sleet",
     "category": "nation-state",
-    "meaning": "North Korea"
+    "meaning": "North Korea",
+    "source_url": "https://learn.microsoft.com/en-us/unified-secops/microsoft-threat-actor-naming",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "Microsoft",
     "term": "Tempest",
     "category": "motivation",
-    "meaning": "financially motivated (cybercriminal)"
+    "meaning": "financially motivated (cybercriminal)",
+    "source_url": "https://learn.microsoft.com/en-us/unified-secops/microsoft-threat-actor-naming",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "Microsoft",
     "term": "Flood",
     "category": "motivation",
-    "meaning": "influence operations"
+    "meaning": "influence operations",
+    "source_url": "https://learn.microsoft.com/en-us/unified-secops/microsoft-threat-actor-naming",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "Secureworks",
     "term": "BRONZE",
     "category": "nation-state",
-    "meaning": "China"
+    "meaning": "China",
+    "source_url": "https://docs.taegis.secureworks.com/intelligence/threat_groups/",
+    "retrieved": "2026-09-14"
   },
   {
     "vendor": "Secureworks",
     "term": "IRON",
     "category": "nation-state",
-    "meaning": "Russia"
+    "meaning": "Russia",
+    "source_url": "https://docs.taegis.secureworks.com/intelligence/threat_groups/",
+    "retrieved": "2026-09-14"
   }
 ]
