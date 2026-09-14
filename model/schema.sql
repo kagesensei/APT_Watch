@@ -184,6 +184,43 @@ CREATE TABLE actor_alias(
     retrieved DATE             -- when it was fetched
 );
 
+-- === Actor identity cross-walk (resolve/aliases.py) ===
+-- Matches ATT&CK's own actor/alias list against MISP Galaxy's, so an actor
+-- can eventually be looked up regardless of which source's name was used.
+-- Not run automatically by any ingest script -- run resolve/aliases.py by
+-- hand after both actor and misp_actor/actor_alias are populated.
+
+CREATE TABLE actor_xwalk(
+    attack_stix_id VARCHAR,  -- actor.stix_id; UNIQUE by construction (checked at build time)
+    attack_id VARCHAR,         -- actor.attack_id, e.g. G0006
+    attack_name VARCHAR,
+    misp_uuid VARCHAR,           -- misp_actor.misp_uuid; UNIQUE by construction (checked at build time)
+    misp_name VARCHAR,
+    match_method VARCHAR,          -- 'exact' (only kind resolve/aliases.py writes here) | 'manual'
+                                     -- ('manual' is reserved for a human promoting a candidate
+                                     -- below by hand; nothing writes it automatically yet)
+    match_score DOUBLE,               -- 100.0 for 'exact'
+    source_url VARCHAR,                 -- copied from the actor_alias row that produced the match
+    retrieved DATE                        -- likewise
+);
+
+-- Every ATT&CK actor with zero exact matches, fuzzy-matched (RapidFuzz
+-- token_set_ratio >= 90) against MISP's alias list. Never promoted to
+-- actor_xwalk automatically -- see data/reports/alias_resolution.md.
+CREATE TABLE actor_xwalk_candidates(
+    attack_stix_id VARCHAR,
+    attack_id VARCHAR,
+    attack_name VARCHAR,
+    misp_uuid VARCHAR,
+    misp_name VARCHAR,
+    match_method VARCHAR,      -- always 'fuzzy' here
+    match_score DOUBLE,          -- RapidFuzz token_set_ratio, 90-100
+    matched_attack_alias VARCHAR,  -- which of the ATT&CK actor's aliases scored highest
+    matched_misp_alias VARCHAR,      -- which MISP alias it matched against
+    source_url VARCHAR,
+    retrieved DATE
+);
+
 -- The CVE -> ATT&CK technique crosswalk used by the chat feature (app/intel.py)
 -- joins across all of the above:
 --

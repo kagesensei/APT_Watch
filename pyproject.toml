@@ -3,11 +3,13 @@ recursive = true
 py-version = "3.10"
 jobs = 0
 ignore = ["data"]
-# ingest/*.py scripts import the repo-root `contracts` module via a runtime
-# sys.path fix in ingest/common.py (they're run directly, one directory
-# down, with no ingest/__init__.py) -- pylint's static import resolution
-# can't see that, so it needs the same root-on-sys.path fix to resolve it.
-init-hook = "import sys; sys.path.insert(0, '.')"
+# ingest/*.py and resolve/aliases.py import the repo-root `contracts`
+# module (and resolve/aliases.py also imports ingest/common.py) via a
+# runtime sys.path fix, since they're run directly, one directory down,
+# with no __init__.py making either a real package. pylint's static import
+# resolution can't see that runtime fix, so it needs the same root- and
+# ingest-on-sys.path fix to resolve those imports itself.
+init-hook = "import sys; sys.path.insert(0, '.'); sys.path.insert(0, 'ingest')"
 
 [tool.pylint.basic]
 # Idiomatic short names that are clearer than a longer alternative in this
