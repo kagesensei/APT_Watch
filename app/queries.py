@@ -121,3 +121,74 @@ def searchable_list(
         [*params, size, offset],
     ).fetchall()
     return total, rows
+
+
+class SigmaRuleMatch(TypedDict):
+    """One Sigma rule covering one technique an actor is documented to use."""
+
+    rule_id: str
+    title: str
+    level: str
+    technique_id: str
+
+
+class SigmaCoverage(TypedDict):
+    """Sigma detection coverage for one ATT&CK actor's documented techniques."""
+
+    attack_id: str
+    covered_techniques: list[str]
+    uncovered_techniques: list[str]
+    covered_technique_count: int
+    uncovered_technique_count: int
+    rules: list[SigmaRuleMatch]
+
+
+def sigma_coverage_for_actor(db: duckdb.DuckDBPyConnection, attack_id: str) -> SigmaCoverage:
+    """Sigma rules covering any technique this ATT&CK actor is documented to
+    use (via sigma_rule_technique, see ingest/sigma.py), plus which of the
+    actor's techniques have no covering rule at all.
+    """
+    precondition(bool(attack_id), "attack_id must not be empty")
+    technique_rows = db.execute(
+        "SELECT DISTINCT atq.technique_id FROM actor_technique atq "
+        "JOIN actor a ON a.stix_id = atq.actor_stix_id WHERE a.attack_id = ?",
+        [attack_id],
+    ).fetchall()
+    actor_techniques = sorted({row[0] for row in technique_rows})
+
+    if not actor_techniques:
+        return {
+            "attack_id": attack_id,
+            "covered_techniques": [],
+            "uncovered_techniques": [],
+            "covered_technique_count": 0,
+            "uncovered_technique_count": 0,
+            "rules": [],
+        }
+
+    # placeholders is only ever "?,?,..." (in_placeholders); actor_techniques'
+    # actual values are bound via the parameter list below, not this string.
+    placeholders = in_placeholders(len(actor_techniques))
+    rule_rows = db.execute(
+        "SELECT srt.technique_id, sr.rule_id, sr.title, sr.level "
+        "FROM sigma_rule_technique srt "
+        "JOIN sigma_rule sr ON sr.rule_id = srt.rule_id "
+        f"WHERE srt.technique_id IN ({placeholders})",  # nosec B608
+        actor_techniques,
+    ).fetchall()
+
+    covered = sorted({technique_id for technique_id, _rule_id, _title, _level in rule_rows})
+    uncovered = sorted(set(actor_techniques) - set(covered))
+    rules: list[SigmaRuleMatch] = [
+        {"rule_id": rule_id, "title": title, "level": level, "technique_id": technique_id}
+        for technique_id, rule_id, title, level in rule_rows
+    ]
+
+    return {
+        "attack_id": attack_id,
+        "covered_techniques": covered,
+        "uncovered_techniques": uncovered,
+        "covered_technique_count": len(covered),
+        "uncovered_technique_count": len(uncovered),
+        "rules": rules,
+    }

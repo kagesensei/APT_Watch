@@ -221,6 +221,35 @@ CREATE TABLE actor_xwalk_candidates(
     retrieved DATE
 );
 
+-- === Sigma detection rules (ingest/sigma.py) ===
+-- SigmaHQ/sigma's rule set, so a technique or actor can be answered with
+-- "here's what detects it" (see app/queries.py's sigma_coverage_for_actor)
+-- as well as "here's what mitigates it". 'deprecated' and 'unsupported'
+-- rule directories are excluded -- see ingest/sigma.py's module docstring.
+
+CREATE TABLE sigma_rule(
+    rule_id VARCHAR,             -- the rule's own "id" field (a UUID)
+    title VARCHAR,
+    status VARCHAR,                -- e.g. 'stable' | 'test' | 'experimental'
+    level VARCHAR,                   -- e.g. 'informational' | 'low' | 'medium' | 'high' | 'critical'
+    logsource_category VARCHAR,        -- logsource.category; absent on ~22% of rules -> NULL
+    logsource_product VARCHAR,           -- logsource.product; absent on ~4% of rules -> NULL
+    description VARCHAR,
+    file_path VARCHAR,                     -- path within the SigmaHQ/sigma repo
+    source_url VARCHAR,                      -- this rule's own GitHub blob URL
+    retrieved DATE                             -- when the repo snapshot was fetched
+);
+
+CREATE TABLE sigma_rule_technique(  -- from tags matching attack.tNNNN(.NNN), uppercased
+    rule_id VARCHAR,
+    technique_id VARCHAR  -- matches actor_technique.technique_id
+);
+
+CREATE TABLE sigma_rule_actor(  -- from tags matching attack.gNNNN, uppercased
+    rule_id VARCHAR,
+    attack_id VARCHAR  -- matches actor.attack_id
+);
+
 -- The CVE -> ATT&CK technique crosswalk used by the chat feature (app/intel.py)
 -- joins across all of the above:
 --
