@@ -1,0 +1,44 @@
+[
+  {
+    "stix_id": "intrusion-set--alpha",
+    "attack_id": "G9001",
+    "name": "Test Group Alpha",
+    "aliases": "Test Group Alpha;Alpha Alias"
+  },
+  {
+    "stix_id": "intrusion-set--beta",
+    "attack_id": "G9002",
+    "name": "Test Group Beta",
+    "aliases": "Test Group Beta;Beta Alt Name"
+  },
+  {
+    "stix_id": "intrusion-set--betaa",
+    "attack_id": "G9007",
+    "name": "Betaa Groupp",
+    "aliases": "Betaa Groupp"
+  },
+  {
+    "stix_id": "intrusion-set--gamma",
+    "attack_id": "G9003",
+    "name": "Test Group Gamma",
+    "aliases": "Test Group Gamma;Gamma Alias One;Gamma Alias Two"
+  },
+  {
+    "stix_id": "intrusion-set--delta",
+    "attack_id": "G9004",
+    "name": "Test Group Delta",
+    "aliases": "Test Group Delta;Shared Alias"
+  },
+  {
+    "stix_id": "intrusion-set--epsilon",
+    "attack_id": "G9005",
+    "name": "Test Group Epsilon",
+    "aliases": "Test Group Epsilon;Shared Alias"
+  },
+  {
+    "stix_id": "intrusion-set--zeta",
+    "attack_id": "G9006",
+    "name": "Totally Unmatched Group",
+    "aliases": "Totally Unmatched Group"
+  }
+]

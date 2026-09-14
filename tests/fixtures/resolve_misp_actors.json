@@ -1,0 +1,27 @@
+[
+  {
+    "misp_uuid": "misp-alpha-uuid",
+    "canonical_name": "Alpha Alias",
+    "synonyms": []
+  },
+  {
+    "misp_uuid": "misp-beta-uuid",
+    "canonical_name": "Beta Group",
+    "synonyms": ["Beta Alt Name"]
+  },
+  {
+    "misp_uuid": "misp-gamma-one-uuid",
+    "canonical_name": "Gamma Alias One",
+    "synonyms": []
+  },
+  {
+    "misp_uuid": "misp-gamma-two-uuid",
+    "canonical_name": "Gamma Alias Two",
+    "synonyms": []
+  },
+  {
+    "misp_uuid": "misp-shared-uuid",
+    "canonical_name": "Shared Alias",
+    "synonyms": []
+  }
+]

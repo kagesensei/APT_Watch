@@ -1,0 +1,12 @@
+title: Test Rule With No Tags
+id: bbbbbbbb-1111-2222-3333-444444444444
+status: stable
+description: A fixture rule with no tags field at all.
+logsource:
+    service: riskdetection
+    product: azure
+detection:
+    selection:
+        EventID: 4625
+    condition: selection
+level: medium

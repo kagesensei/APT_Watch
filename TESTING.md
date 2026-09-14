@@ -12,7 +12,7 @@ pip install -r requirements.txt   # now includes pytest
 pytest
 ```
 
-150 tests, ~4s, no network and no GPU/model required. They run against your
+192 tests, ~4s, no network and no GPU/model required. They run against your
 locally built `data/cti.duckdb` (read-only, gitignored — not committed) plus
 temp/mocked files for anything that writes (NVD cache, saved chats) — nothing
 in `data/` is modified. If `data/cti.duckdb` doesn't exist yet, DB-dependent
@@ -30,6 +30,9 @@ What's covered, by file:
 | `tests/test_intel.py` | every `intel.lookup_*` function against real data, incl. both CVE→CWE→CAPEC→ATT&CK crosswalk dead-end branches, the WannaCry hash → Lazarus Group IOC chain, and naming-convention/alias-etymology facts (APT1 → "Comment Panda"/"Comment Crew") |
 | `tests/test_charts.py` | inline-SVG chart builders: escaping, truncation, zero-value/empty-data edge cases |
 | `tests/test_routes_*.py` | Flask routes via `test_client()`: Library pages, Dashboard, Scan upload, `/ask`, saved-chats auth |
+| `tests/test_misp_galaxy.py` | MISP Galaxy cluster parsing against `tests/fixtures/misp_threat_actor_sample.json` — missing description/country/synonyms/refs, row-count and UUID-uniqueness quality checks |
+| `tests/test_sigma.py` | Sigma rule parsing against a tiny in-memory tarball built from `tests/fixtures/sigma_rules/` — included vs. skipped (`deprecated`/`unsupported`) directories, technique/actor tag extraction, a malformed-YAML file, walked/skipped/parsed quality-check arithmetic |
+| `tests/test_aliases.py` | `resolve/aliases.py`'s matching pipeline against fixture actor/MISP data covering an exact match via canonical name, an exact match via synonym, a fuzzy near-miss spelling, one-to-many and many-to-one collisions, and a completely unmatched group |
 
 Network and the local LLM are mocked throughout (`intel.requests.get`,
 `llm.answer`) so the suite is deterministic and fast — it deliberately does

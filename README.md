@@ -24,11 +24,14 @@ pip install -r requirements.txt
 Run each ingest script once to build `data/cti.duckdb`:
 
 ```bash
-python ingest/attack.py   # MITRE ATT&CK Enterprise (actors, techniques, software, mitigations)
-python ingest/capec.py    # MITRE CAPEC (attack patterns; the CVE->technique crosswalk)
-python ingest/cve.py      # CISA Known Exploited Vulnerabilities catalog
-python ingest/ioc.py      # IOC feeds: URLhaus, MalwareBazaar, Feodo Tracker (no signup needed)
-python ingest/naming.py   # curated vendor naming-convention data (data/seed/*.json, no network)
+python ingest/attack.py       # MITRE ATT&CK Enterprise (actors, techniques, software, mitigations)
+python ingest/capec.py        # MITRE CAPEC (attack patterns; the CVE->technique crosswalk)
+python ingest/cve.py          # CISA Known Exploited Vulnerabilities catalog
+python ingest/ioc.py          # IOC feeds: URLhaus, MalwareBazaar, Feodo Tracker (no signup needed)
+python ingest/naming.py       # curated vendor naming-convention data (data/seed/*.json, no network)
+python ingest/misp_galaxy.py  # MISP Galaxy threat-actor cluster (independent actor/alias list)
+python ingest/sigma.py        # SigmaHQ/sigma detection rules, tagged with ATT&CK techniques/actors
+python resolve/aliases.py     # cross-walks actor against misp_actor -- run by hand, after both above
 ```
 
 | table | source | description |
@@ -48,16 +51,28 @@ python ingest/naming.py   # curated vendor naming-convention data (data/seed/*.j
 | `ioc_software` | (crosswalk) | IOC malware family name matched against `actor_software.software_name` |
 | `naming_convention` | curated (`data/seed/naming_conventions.json`) | what a vendor's naming-scheme word denotes, e.g. CrowdStrike's "Panda" = China, "Bear" = Russia |
 | `actor_alias_note` | curated (`data/seed/actor_alias_notes.json`) | documented etymology for specific aliases, e.g. why "Comment Crew" |
+| `misp_actor` | MISP Galaxy | threat-actor cluster: canonical name, description, country, references |
+| `actor_alias` | MISP Galaxy | one row per canonical name/synonym, keyed to `misp_actor.misp_uuid` |
+| `actor_xwalk` | (computed by `resolve/aliases.py`) | mutual 1-to-1 exact-match cross-walk between `actor` and `misp_actor` |
+| `actor_xwalk_candidates` | (computed by `resolve/aliases.py`) | fuzzy-matched (RapidFuzz >= 90) candidates awaiting manual review, never auto-promoted |
+| `sigma_rule` | SigmaHQ/sigma | detection rule metadata (title, status, level, logsource, description) |
+| `sigma_rule_technique` | SigmaHQ/sigma | which ATT&CK techniques each rule's tags claim to detect |
+| `sigma_rule_actor` | SigmaHQ/sigma | which ATT&CK groups each rule's tags reference |
 
-Revoked/deprecated ATT&CK and CAPEC objects are excluded. Each script prints
-row counts and runs a data quality check — comparing its tables against the
-publisher's own totals (ATT&CK/CAPEC entity counts, the CISA catalog's
-published `count`) for the four feed-based scripts, or against the seed
+Revoked/deprecated ATT&CK and CAPEC objects are excluded; SigmaHQ's
+`deprecated`/`unsupported` rule directories are excluded the same way (see
+`ingest/sigma.py`'s docstring). Each script prints row counts and runs a
+data quality check — comparing its tables against the publisher's own
+totals (ATT&CK/CAPEC entity counts, the CISA catalog's published `count`,
+SigmaHQ's own file count) for the feed-based scripts, or against the seed
 file's own row count for `ingest/naming.py` — exiting non-zero if any check
-fails. Full schema reference: `model/schema.sql`.
+fails. `resolve/aliases.py` has its own quality checks (no duplicate
+`attack_stix_id`/`misp_uuid` in `actor_xwalk`) and writes a review report to
+`data/reports/alias_resolution.md` rather than resolving ambiguous matches
+itself. Full schema reference: `model/schema.sql`.
 
-**Naming conventions are curated, not fetched:** unlike the other four
-tables, no feed publishes "what does Panda mean" — `naming_convention` and
+**Naming conventions are curated, not fetched:** unlike the other tables
+above, no feed publishes "what does Panda mean" — `naming_convention` and
 `actor_alias_note` are hand-researched and reviewed like code
 (`data/seed/*.json`), covering only entries confirmed with reasonably high
 confidence. They're deliberately not comprehensive; extend the seed files
@@ -79,6 +94,22 @@ match, not confirmed evidence a given hash/URL/IP relates to exploitation of
 that CVE, always marked derived. Most CVEs will correctly return zero IOC
 matches; that's the honest answer for a name-based correlation over three
 small "recent" feeds, not a bug.
+
+**The ATT&CK <-> MISP actor cross-walk is intentionally partial:**
+`resolve/aliases.py` only writes a mutual one-to-one exact match to
+`actor_xwalk` (115 of 176 ATT&CK groups, as of the run in
+`data/reports/alias_resolution.md`). A name shared by more than one group on
+either side — MISP's single "Lazarus Group" entry overlapping five distinct
+ATT&CK groups is the sharpest example — is a real naming collision, not
+something to silently pick a winner for, so it's reported instead. Fuzzy
+matches (RapidFuzz >= 90) land in `actor_xwalk_candidates` for review and are
+never auto-promoted. Nothing in the app queries either table yet.
+
+**Sigma rule -> ATT&CK mappings are the rule authors' own claims, not a
+MITRE-verified fact:** `sigma_rule_technique`/`sigma_rule_actor` come
+straight from each rule's own `attack.tNNNN`/`attack.gNNNN` tags — useful
+signal, but self-reported by whoever wrote that Sigma rule, not cross-checked
+against ATT&CK's own data the way the CVE crosswalk above is.
 
 Query the result with any DuckDB client, e.g.:
 
@@ -278,11 +309,13 @@ a local dev app right now.
 pytest
 ```
 
-150 tests covering entity extraction, the CVE→CWE→CAPEC→ATT&CK crosswalk
+192 tests covering entity extraction, the CVE→CWE→CAPEC→ATT&CK crosswalk
 (both success and dead-end branches), IOC lookups, the chart builders, the
 design-by-contract helpers in `contracts.py`, naming-convention/alias-etymology
-lookups, and every Flask route — run in a few seconds against your locally
-built `data/cti.duckdb` (see Data ingest above; DB-dependent tests skip
+lookups, the MISP Galaxy/Sigma parsers and the alias resolver (all three
+against small fixture files under `tests/fixtures/`, never a live download),
+and every Flask route — run in a few seconds against your locally built
+`data/cti.duckdb` (see Data ingest above; DB-dependent tests skip
 automatically if it doesn't exist yet), with the local LLM and NVD network
 calls mocked out. See `TESTING.md` for what each test file covers and a
 manual walkthrough for the parts that need a browser or the local LLM (chat
@@ -328,16 +361,18 @@ pytest
 
 ## Project layout
 
-- `ingest/attack.py`, `ingest/capec.py`, `ingest/cve.py`, `ingest/ioc.py` —
-  implemented ingest pipelines (see Data ingest above)
+- `ingest/attack.py`, `ingest/capec.py`, `ingest/cve.py`, `ingest/ioc.py`,
+  `ingest/misp_galaxy.py`, `ingest/sigma.py` — implemented ingest pipelines
+  (see Data ingest above)
 - `ingest/naming.py`, `data/seed/*.json` — curated vendor naming-convention data (no network source)
 - `ingest/common.py` — shared fetch/count/data-quality-exit helpers for the ingest scripts above
-- `ingest/feeds.py`, `ingest/malpedia.py`, `ingest/misp_galaxy.py` — additional
-  intel source ingests (not yet implemented)
-- `resolve/aliases.py` — actor alias resolution across sources (not yet implemented)
+- `ingest/feeds.py`, `ingest/malpedia.py` — additional intel source ingests (not yet implemented)
+- `resolve/aliases.py` — cross-walks ATT&CK actors against MISP Galaxy's actor list
+  (`actor_xwalk`/`actor_xwalk_candidates`); run by hand, writes `data/reports/alias_resolution.md`
 - `contracts.py` — design-by-contract helpers (`precondition`/`postcondition`/`not_none`/`bounded`) used across `app/`, `ingest/`, and `resolve/`; see `POWER10.md`
 - `model/schema.sql` — full schema reference for both database files
-- `tests/` — pytest suite (see Testing above); `TESTING.md` — what it covers plus a manual walkthrough
+- `CLAUDE.md` — repo guidance for AI assistants: commands, conventions, current phase status
+- `tests/` — pytest suite (see Testing above); fixture files for the ingest/resolve parsers live in `tests/fixtures/`; `TESTING.md` — what it covers plus a manual walkthrough
 - `app/` — Flask application:
   - `routes.py` (mounted at `/library`), `templates/*.html` (excl. `chat.html`, `scan.html`) — the browsing UI, including the CVE list/detail pages
   - `chat.py` (mounted at `/`) — the chat home page, `/ask` API, and the `/api/chats/*` saved-chat CRUD API
@@ -354,7 +389,7 @@ pytest
   - `templates/chat.html`, `static/js/chat.js` — the 3-column chat page's markup/JS
   - `templates/scan.html`, `static/js/scan.js` — the scan page's markup/JS
   - `db.py`, `cache.py` — read-only main DB connection, writable NVD cache connection
-  - `queries.py` — small shared DB query helpers (`count`, `overview_counts`, `searchable_list`) used by `routes.py`, `preview.py`, `dashboard.py`, and `intel.py`
+  - `queries.py` — small shared DB query helpers (`count`, `overview_counts`, `searchable_list`) used by `routes.py`, `preview.py`, `dashboard.py`, and `intel.py`; also `sigma_coverage_for_actor()` (data-layer only, no route/UI yet)
 - `main.py` — Flask app entry point; loads `.env` via `python-dotenv`; runs the preflight gate only if `APTWATCH_RUN_PREFLIGHT=1`
 - `preflight.py` — the pylint/mypy/bandit/pytest quality gate, run by the pre-commit hook and (as separate steps) by CI
 - `.pre-commit-config.yaml` — runs `preflight.py` on every `git commit` (`pre-commit install` once per clone)
@@ -363,3 +398,4 @@ pytest
 - `data/nvd_cache.duckdb` — on-demand NVD lookup cache (gitignored)
 - `data/chats/` — per-user saved chats for signed-in users (gitignored)
 - `data/raw/` — downloaded source data (regenerated by ingest scripts, not committed)
+- `data/reports/alias_resolution.md` — `resolve/aliases.py`'s human-review report (committed; regenerate by re-running it)

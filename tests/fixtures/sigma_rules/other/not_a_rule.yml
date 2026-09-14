@@ -1,0 +1,4 @@
+this_is_not_a_rules_directory: true
+note: >
+    Lives under other/, which is not in INCLUDED_RULE_DIRS or
+    SKIPPED_RULE_DIRS -- it must never be counted as walked at all.
