@@ -20,9 +20,19 @@ Two passes, in order:
 source_url/retrieved on both output tables are copied from the actor_alias
 row that produced the match: that's the data this cross-walk is actually
 built from, and the match is only as current as that data.
+
+A third input, data/seed/actor_xwalk_manual.json, records hand-reviewed
+promote/reject decisions for specific fuzzy candidates -- curated the same
+way as data/seed/naming_conventions.json, and re-applied on every run, so a
+decision survives the next re-ingest instead of being silently wiped out by
+write_tables()'s CREATE OR REPLACE. A "promoted" entry becomes an
+actor_xwalk row with match_method='manual'; a "rejected" entry becomes an
+actor_xwalk_rejected row. Either way it's removed from the open candidates
+list, since a reviewed pair shouldn't still look pending.
 """
 
 import datetime
+import json
 import pathlib
 import re
 import sys
@@ -46,8 +56,10 @@ import common  # noqa: E402  pylint: disable=wrong-import-position
 from contracts import precondition  # noqa: E402  pylint: disable=wrong-import-position
 
 REPORT_PATH = ROOT / "data" / "reports" / "alias_resolution.md"
+MANUAL_REVIEW_PATH = ROOT / "data" / "seed" / "actor_xwalk_manual.json"
 
 FUZZY_THRESHOLD = 90
+VALID_DECISIONS = ("promoted", "rejected")
 
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]")
 
@@ -267,19 +279,112 @@ def build_candidate_rows(
     return rows
 
 
+class ManualReview(TypedDict):
+    """One hand-reviewed promote/reject decision from
+    data/seed/actor_xwalk_manual.json.
+    """
+
+    attack_id: str
+    misp_uuid: str
+    decision: str  # 'promoted' | 'rejected'
+    match_score: float
+    reason: str
+    sources: list[str]
+    reviewed: str
+
+
+def load_manual_reviews(path: pathlib.Path) -> list[ManualReview]:
+    """Load hand-reviewed decisions, if any. Missing file -> no reviews yet,
+    not an error (mirrors ingest/naming.py's seed-file loading).
+    """
+    if not path.exists():
+        return []
+    reviews: list[ManualReview] = json.loads(path.read_text(encoding="utf-8"))
+    return reviews
+
+
+RejectedRow = tuple[str, str, str, str, str, float, str, str]
+
+
+class ManualReviewResult(TypedDict):
+    """What applying data/seed/actor_xwalk_manual.json produces."""
+
+    xwalk_rows: list[XwalkRow]
+    rejected_rows: list[RejectedRow]
+    remaining_candidates: list[CandidateRow]
+    invalid_references: list[str]
+
+
+def apply_manual_reviews(
+    reviews: list[ManualReview],
+    attack_actors: list[AttackActor],
+    misp_names: dict[str, str],
+    misp_source: dict[str, tuple[str, str]],
+    candidate_rows: list[CandidateRow],
+) -> ManualReviewResult:
+    """Turn each reviewed decision into a row for the right table, and drop
+    every reviewed (attack_id, misp_uuid) pair from the open candidates list.
+    """
+    attack_by_id = {actor["attack_id"]: actor for actor in attack_actors}
+    reviewed_pairs = {(review["attack_id"], review["misp_uuid"]) for review in reviews}
+
+    xwalk_rows: list[XwalkRow] = []
+    rejected_rows: list[RejectedRow] = []
+    invalid_references: list[str] = []
+
+    for review in reviews:
+        actor = attack_by_id.get(review["attack_id"])
+        misp_name = misp_names.get(review["misp_uuid"])
+        label = f"{review['attack_id']} / {review['misp_uuid']} ({review['decision']})"
+        if actor is None or misp_name is None:
+            invalid_references.append(f"{label}: unknown attack_id or misp_uuid")
+            continue
+        if review["decision"] not in VALID_DECISIONS:
+            invalid_references.append(f"{label}: decision must be 'promoted' or 'rejected'")
+            continue
+
+        if review["decision"] == "promoted":
+            source_url, retrieved = misp_source.get(review["misp_uuid"], ("", review["reviewed"]))
+            xwalk_rows.append((
+                actor["stix_id"], actor["attack_id"], actor["name"],
+                review["misp_uuid"], misp_name, "manual", review["match_score"],
+                source_url, retrieved,
+            ))
+        else:
+            rejected_rows.append((
+                actor["stix_id"], actor["attack_id"], actor["name"],
+                review["misp_uuid"], misp_name, review["match_score"],
+                review["reason"], review["reviewed"],
+            ))
+
+    remaining_candidates = [
+        row for row in candidate_rows if (row[1], row[3]) not in reviewed_pairs
+    ]
+    return {
+        "xwalk_rows": xwalk_rows,
+        "rejected_rows": rejected_rows,
+        "remaining_candidates": remaining_candidates,
+        "invalid_references": invalid_references,
+    }
+
+
 def write_tables(
     con: duckdb.DuckDBPyConnection,
     xwalk_rows: list[XwalkRow],
     candidate_rows: list[CandidateRow],
+    rejected_rows: list[RejectedRow],
 ) -> None:
-    """Create (or replace) and populate actor_xwalk and actor_xwalk_candidates."""
+    """Create (or replace) and populate actor_xwalk, actor_xwalk_candidates,
+    and actor_xwalk_rejected.
+    """
     con.execute(
         "CREATE OR REPLACE TABLE actor_xwalk("
         "attack_stix_id VARCHAR, attack_id VARCHAR, attack_name VARCHAR, "
         "misp_uuid VARCHAR, misp_name VARCHAR, match_method VARCHAR, "
         "match_score DOUBLE, source_url VARCHAR, retrieved DATE)"
     )
-    con.executemany("INSERT INTO actor_xwalk VALUES (?,?,?,?,?,?,?,?,?)", xwalk_rows)
+    if xwalk_rows:
+        con.executemany("INSERT INTO actor_xwalk VALUES (?,?,?,?,?,?,?,?,?)", xwalk_rows)
 
     con.execute(
         "CREATE OR REPLACE TABLE actor_xwalk_candidates("
@@ -288,9 +393,21 @@ def write_tables(
         "matched_attack_alias VARCHAR, matched_misp_alias VARCHAR, "
         "source_url VARCHAR, retrieved DATE)"
     )
-    con.executemany(
-        "INSERT INTO actor_xwalk_candidates VALUES (?,?,?,?,?,?,?,?,?,?,?)", candidate_rows
+    if candidate_rows:
+        con.executemany(
+            "INSERT INTO actor_xwalk_candidates VALUES (?,?,?,?,?,?,?,?,?,?,?)", candidate_rows
+        )
+
+    con.execute(
+        "CREATE OR REPLACE TABLE actor_xwalk_rejected("
+        "attack_stix_id VARCHAR, attack_id VARCHAR, attack_name VARCHAR, "
+        "misp_uuid VARCHAR, misp_name VARCHAR, match_score DOUBLE, "
+        "reason VARCHAR, reviewed DATE)"
     )
+    if rejected_rows:
+        con.executemany(
+            "INSERT INTO actor_xwalk_rejected VALUES (?,?,?,?,?,?,?,?)", rejected_rows
+        )
 
 
 def check_unique_column(con: duckdb.DuckDBPyConnection, table: str, column: str) -> str | None:
@@ -364,8 +481,8 @@ def _render_unmatched_section(unmatched_no_candidates: list[AttackActor]) -> lis
 def _render_fuzzy_section(candidate_rows: list[CandidateRow]) -> list[str]:
     lines = [
         "",
-        f"## Fuzzy candidates ({len(candidate_rows)}) -- NOT written to `actor_xwalk`; "
-        "review and promote manually",
+        f"## Open fuzzy candidates ({len(candidate_rows)}) -- NOT written to `actor_xwalk`; "
+        "still awaiting review",
         "",
         "| Score | ATT&CK ID | ATT&CK name | Matched ATT&CK alias | MISP name | "
         "Matched MISP alias | MISP UUID |",
@@ -374,6 +491,26 @@ def _render_fuzzy_section(candidate_rows: list[CandidateRow]) -> list[str]:
     for row in candidate_rows:
         lines.append(
             f"| {row[6]:.0f} | {row[1]} | {row[2]} | {row[7]} | {row[4]} | {row[8]} | {row[3]} |"
+        )
+    return lines
+
+
+def _render_manual_reviews(
+    manual_reviews: list[ManualReview],
+    attack_by_id: dict[str, AttackActor],
+    misp_names: dict[str, str],
+) -> list[str]:
+    lines = ["", f"## Manually reviewed ({len(manual_reviews)})", ""]
+    if not manual_reviews:
+        return lines + ["None yet."]
+    for review in manual_reviews:
+        actor = attack_by_id.get(review["attack_id"])
+        attack_label = _attack_label(actor) if actor else review["attack_id"]
+        misp_label = _misp_label(review["misp_uuid"], misp_names)
+        sources = ", ".join(review.get("sources", [])) or "none recorded"
+        lines.append(
+            f"- **{review['decision'].upper()}** (score {review['match_score']:.0f}) "
+            f"{attack_label} <-> {misp_label} -- {review['reason']} Sources: {sources}"
         )
     return lines
 
@@ -415,39 +552,47 @@ def _render_misp_side_ambiguous(
     return lines
 
 
-def build_report_markdown(
-    generated: str,
-    attack_actors: list[AttackActor],
-    misp_row_count: int,
-    misp_alias_row_count: int,
-    classified: Classified,
-    candidate_rows: list[CandidateRow],
-    match_sets: ExactMatchSets,
-    misp_names: dict[str, str],
-) -> str:
-    """Render the human-review report: counts, unmatched groups, fuzzy
-    candidates, and every 1-to-many/many-to-one exact-match collision.
+def build_report_markdown(result: "ResolutionResult", generated: str) -> str:
+    """Render the human-review report: counts, unmatched groups, open fuzzy
+    candidates, manually reviewed decisions, and every 1-to-many/many-to-one
+    exact-match collision.
     """
+    attack_actors = result["attack_actors"]
+    classified = result["classified"]
+    candidate_rows = result["candidate_rows"]
+    match_sets = result["match_sets"]
+    misp_names = result["misp_names"]
+
+    attack_by_stix_id = {a["stix_id"]: a for a in attack_actors}
+    attack_by_attack_id = {a["attack_id"]: a for a in attack_actors}
+
     fuzzy_attack_ids = {row[0] for row in candidate_rows}
+    reviewed_stix_ids = {
+        attack_by_attack_id[review["attack_id"]]["stix_id"]
+        for review in result["manual_reviews"]
+        if review["attack_id"] in attack_by_attack_id
+    }
+    resolved_stix_ids = fuzzy_attack_ids | reviewed_stix_ids
     unmatched_no_candidates = [
-        a for a in classified["unmatched"] if a["stix_id"] not in fuzzy_attack_ids
+        a for a in classified["unmatched"] if a["stix_id"] not in resolved_stix_ids
     ]
     misp_ambiguous_uuids = sorted(
         uuid for uuid, attackers in match_sets["misp_to_attack"].items() if len(attackers) > 1
     )
 
     lines = _render_summary(
-        attack_actors, misp_row_count, misp_alias_row_count, classified,
+        attack_actors, result["misp_row_count"], result["misp_alias_row_count"], classified,
         len(fuzzy_attack_ids), len(misp_ambiguous_uuids), len(unmatched_no_candidates), generated,
     )
     lines += _render_unmatched_section(unmatched_no_candidates)
     lines += _render_fuzzy_section(candidate_rows)
+    lines += _render_manual_reviews(result["manual_reviews"], attack_by_attack_id, misp_names)
     lines += ["", "## Ambiguous matches"]
     lines += _render_attack_side_ambiguous(
         classified["attack_side_ambiguous"], match_sets, misp_names
     )
     lines += _render_misp_side_ambiguous(
-        misp_ambiguous_uuids, match_sets, {a["stix_id"]: a for a in attack_actors}, misp_names
+        misp_ambiguous_uuids, match_sets, attack_by_stix_id, misp_names
     )
     lines.append("")
     return "\n".join(lines)
@@ -464,6 +609,9 @@ class ResolutionResult(TypedDict):
     match_sets: ExactMatchSets
     xwalk_rows: list[XwalkRow]
     candidate_rows: list[CandidateRow]
+    rejected_rows: list[RejectedRow]
+    manual_reviews: list[ManualReview]
+    invalid_manual_references: list[str]
 
 
 def build_misp_source_index(misp_rows: list[MispAliasRow]) -> dict[str, tuple[str, str]]:
@@ -477,7 +625,9 @@ def build_misp_source_index(misp_rows: list[MispAliasRow]) -> dict[str, tuple[st
 
 
 def resolve_actors(con: duckdb.DuckDBPyConnection) -> ResolutionResult:
-    """Run both matching passes; return everything main() needs to act on."""
+    """Run both matching passes, apply any hand-reviewed decisions on top,
+    and return everything main() needs to act on.
+    """
     attack_actors = load_attack_actors(con)
     misp_rows = load_misp_alias_rows(con)
     misp_names = load_misp_names(con)
@@ -490,6 +640,11 @@ def resolve_actors(con: duckdb.DuckDBPyConnection) -> ResolutionResult:
     xwalk_rows = build_xwalk_rows(classified["clean"], misp_names, misp_source)
     candidate_rows = build_candidate_rows(classified["unmatched"], misp_rows, misp_names)
 
+    manual_reviews = load_manual_reviews(MANUAL_REVIEW_PATH)
+    manual_result = apply_manual_reviews(
+        manual_reviews, attack_actors, misp_names, misp_source, candidate_rows
+    )
+
     return {
         "attack_actors": attack_actors,
         "misp_names": misp_names,
@@ -497,24 +652,18 @@ def resolve_actors(con: duckdb.DuckDBPyConnection) -> ResolutionResult:
         "misp_alias_row_count": len(misp_rows),
         "classified": classified,
         "match_sets": match_sets,
-        "xwalk_rows": xwalk_rows,
-        "candidate_rows": candidate_rows,
+        "xwalk_rows": xwalk_rows + manual_result["xwalk_rows"],
+        "candidate_rows": manual_result["remaining_candidates"],
+        "rejected_rows": manual_result["rejected_rows"],
+        "manual_reviews": manual_reviews,
+        "invalid_manual_references": manual_result["invalid_references"],
     }
 
 
 def write_report(result: ResolutionResult) -> None:
     """Render and write data/reports/alias_resolution.md."""
     generated_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-    report = build_report_markdown(
-        generated_str,
-        result["attack_actors"],
-        result["misp_row_count"],
-        result["misp_alias_row_count"],
-        result["classified"],
-        result["candidate_rows"],
-        result["match_sets"],
-        result["misp_names"],
-    )
+    report = build_report_markdown(result, generated_str)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(report, encoding="utf-8")
     print(f"Report written to {REPORT_PATH}")
@@ -525,8 +674,10 @@ def main() -> None:
     con = duckdb.connect(str(common.DB_PATH))
     result = resolve_actors(con)
 
-    write_tables(con, result["xwalk_rows"], result["candidate_rows"])
-    common.print_table_counts(con, ["actor_xwalk", "actor_xwalk_candidates"])
+    write_tables(con, result["xwalk_rows"], result["candidate_rows"], result["rejected_rows"])
+    common.print_table_counts(
+        con, ["actor_xwalk", "actor_xwalk_candidates", "actor_xwalk_rejected"]
+    )
 
     failures = [
         failure
@@ -536,6 +687,12 @@ def main() -> None:
         )
         if failure
     ]
+    if result["invalid_manual_references"]:
+        print(
+            "QC [FAIL] data/seed/actor_xwalk_manual.json has invalid entries: "
+            f"{result['invalid_manual_references']}"
+        )
+        failures.append("actor_xwalk_manual.json invalid entries")
 
     write_report(result)
     common.fail_if_any(failures)

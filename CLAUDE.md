@@ -75,7 +75,12 @@ and merged:
    against MISP's list into `actor_xwalk` (mutual 1-to-1 exact matches
    only) and `actor_xwalk_candidates` (fuzzy matches, for manual review,
    never auto-promoted); every 1-to-many/many-to-one collision is reported,
-   not guessed at, in `data/reports/alias_resolution.md`.
+   not guessed at, in `data/reports/alias_resolution.md`. Human review
+   decisions on fuzzy candidates are recorded in
+   `data/seed/actor_xwalk_manual.json` (same curated/git-tracked pattern as
+   the naming seed files) and re-applied on every run: `"promoted"` becomes
+   an `actor_xwalk` row with `match_method='manual'`, `"rejected"` becomes
+   an `actor_xwalk_rejected` row with the reasoning kept, not discarded.
 4. **Sigma rules ingest** -- `ingest/sigma.py` loads SigmaHQ/sigma's
    detection rules into `sigma_rule`/`sigma_rule_technique`/
    `sigma_rule_actor`; `app/queries.sigma_coverage_for_actor()` answers

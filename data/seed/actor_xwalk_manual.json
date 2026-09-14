@@ -1,0 +1,38 @@
+[
+  {
+    "attack_id": "G0020",
+    "misp_uuid": "7036fb3d-86b7-4d9c-bc66-1e1ead8b7840",
+    "decision": "promoted",
+    "match_score": 100.0,
+    "reason": "MISP's own \"Equation Group\" cluster entry cites https://attack.mitre.org/groups/G0020/ directly in its reference list -- MISP's curators already identify this cluster as the same group MITRE tracks as G0020 \"Equation\". Kaspersky coined \"Equation Group\"; MITRE uses the shorter \"Equation\" for the same NSA-linked actor tied to Stuxnet/Flame.",
+    "sources": [
+      "https://attack.mitre.org/groups/G0020/",
+      "https://en.wikipedia.org/wiki/Equation_Group"
+    ],
+    "reviewed": "2026-09-14"
+  },
+  {
+    "attack_id": "G0142",
+    "misp_uuid": "54618130-55d3-4506-b62b-67f2dca12b04",
+    "decision": "promoted",
+    "match_score": 95.0,
+    "reason": "Same activity cluster under a common misspelling (\"Confucious\" vs \"Confucius\"). MITRE's G0142 page: South-Asia-focused, Pakistani military/government targets, noted as similar to Patchwork. MISP's \"Confucious\" entry: India-linked APT active since 2013 targeting Pakistan/China, military/government/energy. Descriptions are consistent and non-contradictory; corroborated by Malpedia's own \"Confucious\" actor entry using the same spelling variant.",
+    "sources": [
+      "https://attack.mitre.org/groups/G0142/",
+      "https://malpedia.caad.fkie.fraunhofer.de/actor/confucious"
+    ],
+    "reviewed": "2026-09-14"
+  },
+  {
+    "attack_id": "G0114",
+    "misp_uuid": "ba8973b2-fd97-4aa7-9307-ea4838d96428",
+    "decision": "rejected",
+    "match_score": 100.0,
+    "reason": "The RapidFuzz 100 score is a token_set_ratio scoring artifact: \"Chimera\" is a lexical subset of \"Red Chimera\", which always scores 100 regardless of whether the entities are related. MITRE's live G0114 page lists only \"Chimera\" as an alias; CyCraft (who first named Chimera) ties it specifically to Taiwan semiconductor/airline-industry espionage via Cobalt Strike/Winnti. MISP's \"WET PANDA\" entry has no description, and its one reference is a generic, non-group-specific CrowdStrike report PDF -- no evidence found connecting it to Chimera's documented activity. Treated as a coincidental name collision between unrelated actors, not the same group.",
+    "sources": [
+      "https://attack.mitre.org/groups/G0114/",
+      "https://www.cycraft.com/en/post/threat-attribution20210126"
+    ],
+    "reviewed": "2026-09-14"
+  }
+]

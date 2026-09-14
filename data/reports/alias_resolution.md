@@ -7,7 +7,7 @@ Generated 2026-09-14 by `resolve/aliases.py`, matching 176 ATT&CK actors against
 - Matched exactly, 1-to-1 (written to `actor_xwalk`): **115**
 - Ambiguous: one ATT&CK group matched >1 MISP UUID: **28**
 - Ambiguous: one MISP UUID matched >1 ATT&CK group: **11**
-- Unmatched, with a fuzzy candidate >= 90 for review (in `actor_xwalk_candidates`): **3**
+- Unmatched, with a fuzzy candidate >= 90 for review (in `actor_xwalk_candidates`): **0**
 - Completely unmatched (no exact match, no fuzzy candidate >= 90): **12**
 
 ## Unmatched ATT&CK groups (12)
@@ -29,13 +29,16 @@ No exact match after normalization, and no fuzzy candidate scored >= 90 against 
 | G1050 | Water Galura | intrusion-set--be8847e0-9512-45db-895e-f871ab6d3820 |
 | G1051 | Medusa Group | intrusion-set--918da025-04bd-48af-b6c4-f3e4d1b915eb |
 
-## Fuzzy candidates (3) -- NOT written to `actor_xwalk`; review and promote manually
+## Open fuzzy candidates (0) -- NOT written to `actor_xwalk`; still awaiting review
 
 | Score | ATT&CK ID | ATT&CK name | Matched ATT&CK alias | MISP name | Matched MISP alias | MISP UUID |
 |---|---|---|---|---|---|---|
-| 100 | G0114 | Chimera | Chimera | WET PANDA | Red Chimera | ba8973b2-fd97-4aa7-9307-ea4838d96428 |
-| 100 | G0020 | Equation | Equation | Equation Group | Equation Group | 7036fb3d-86b7-4d9c-bc66-1e1ead8b7840 |
-| 95 | G0142 | Confucius | Confucius | Confucious | Confucious | 54618130-55d3-4506-b62b-67f2dca12b04 |
+
+## Manually reviewed (3)
+
+- **PROMOTED** (score 100) G0020 Equation (intrusion-set--96e239be-ad99-49eb-b127-3007b8c1bec9) <-> Equation Group (7036fb3d-86b7-4d9c-bc66-1e1ead8b7840) -- MISP's own "Equation Group" cluster entry cites https://attack.mitre.org/groups/G0020/ directly in its reference list -- MISP's curators already identify this cluster as the same group MITRE tracks as G0020 "Equation". Kaspersky coined "Equation Group"; MITRE uses the shorter "Equation" for the same NSA-linked actor tied to Stuxnet/Flame. Sources: https://attack.mitre.org/groups/G0020/, https://en.wikipedia.org/wiki/Equation_Group
+- **PROMOTED** (score 95) G0142 Confucius (intrusion-set--6eded342-33e5-4451-b6b2-e1c62863129f) <-> Confucious (54618130-55d3-4506-b62b-67f2dca12b04) -- Same activity cluster under a common misspelling ("Confucious" vs "Confucius"). MITRE's G0142 page: South-Asia-focused, Pakistani military/government targets, noted as similar to Patchwork. MISP's "Confucious" entry: India-linked APT active since 2013 targeting Pakistan/China, military/government/energy. Descriptions are consistent and non-contradictory; corroborated by Malpedia's own "Confucious" actor entry using the same spelling variant. Sources: https://attack.mitre.org/groups/G0142/, https://malpedia.caad.fkie.fraunhofer.de/actor/confucious
+- **REJECTED** (score 100) G0114 Chimera (intrusion-set--8c1f0187-0826-4320-bddc-5f326cfcfe2c) <-> WET PANDA (ba8973b2-fd97-4aa7-9307-ea4838d96428) -- The RapidFuzz 100 score is a token_set_ratio scoring artifact: "Chimera" is a lexical subset of "Red Chimera", which always scores 100 regardless of whether the entities are related. MITRE's live G0114 page lists only "Chimera" as an alias; CyCraft (who first named Chimera) ties it specifically to Taiwan semiconductor/airline-industry espionage via Cobalt Strike/Winnti. MISP's "WET PANDA" entry has no description, and its one reference is a generic, non-group-specific CrowdStrike report PDF -- no evidence found connecting it to Chimera's documented activity. Treated as a coincidental name collision between unrelated actors, not the same group. Sources: https://attack.mitre.org/groups/G0114/, https://www.cycraft.com/en/post/threat-attribution20210126
 
 ## Ambiguous matches
 

@@ -53,8 +53,9 @@ python resolve/aliases.py     # cross-walks actor against misp_actor -- run by h
 | `actor_alias_note` | curated (`data/seed/actor_alias_notes.json`) | documented etymology for specific aliases, e.g. why "Comment Crew" |
 | `misp_actor` | MISP Galaxy | threat-actor cluster: canonical name, description, country, references |
 | `actor_alias` | MISP Galaxy | one row per canonical name/synonym, keyed to `misp_actor.misp_uuid` |
-| `actor_xwalk` | (computed by `resolve/aliases.py`) | mutual 1-to-1 exact-match cross-walk between `actor` and `misp_actor` |
+| `actor_xwalk` | (computed by `resolve/aliases.py`) | mutual 1-to-1 exact-match cross-walk between `actor` and `misp_actor`, plus any pair promoted via `data/seed/actor_xwalk_manual.json` (`match_method='manual'`) |
 | `actor_xwalk_candidates` | (computed by `resolve/aliases.py`) | fuzzy-matched (RapidFuzz >= 90) candidates awaiting manual review, never auto-promoted |
+| `actor_xwalk_rejected` | curated (`data/seed/actor_xwalk_manual.json`) | fuzzy candidates a human reviewed and declined to promote, kept with their reasoning rather than silently dropped |
 | `sigma_rule` | SigmaHQ/sigma | detection rule metadata (title, status, level, logsource, description) |
 | `sigma_rule_technique` | SigmaHQ/sigma | which ATT&CK techniques each rule's tags claim to detect |
 | `sigma_rule_actor` | SigmaHQ/sigma | which ATT&CK groups each rule's tags reference |
@@ -96,14 +97,30 @@ matches; that's the honest answer for a name-based correlation over three
 small "recent" feeds, not a bug.
 
 **The ATT&CK <-> MISP actor cross-walk is intentionally partial:**
-`resolve/aliases.py` only writes a mutual one-to-one exact match to
+`resolve/aliases.py` only auto-writes a mutual one-to-one exact match to
 `actor_xwalk` (115 of 176 ATT&CK groups, as of the run in
 `data/reports/alias_resolution.md`). A name shared by more than one group on
 either side — MISP's single "Lazarus Group" entry overlapping five distinct
 ATT&CK groups is the sharpest example — is a real naming collision, not
 something to silently pick a winner for, so it's reported instead. Fuzzy
-matches (RapidFuzz >= 90) land in `actor_xwalk_candidates` for review and are
-never auto-promoted. Nothing in the app queries either table yet.
+matches (RapidFuzz >= 90) land in `actor_xwalk_candidates` for human review
+and are never auto-promoted. Nothing in the app queries either table yet.
+
+**Manual review decisions are curated, not re-derived:** a human reviewing an
+open fuzzy candidate records their promote/reject decision — with sources —
+in `data/seed/actor_xwalk_manual.json`, the same hand-edited, git-tracked
+pattern as the naming seed files. `resolve/aliases.py` re-applies it on every
+run: a `"promoted"` entry becomes an `actor_xwalk` row with
+`match_method='manual'`; a `"rejected"` entry becomes an `actor_xwalk_rejected`
+row, keeping the reasoning instead of just deleting the candidate. Either way
+the pair is removed from `actor_xwalk_candidates`, since a reviewed match
+shouldn't still look pending. As of this repo's three reviewed candidates:
+G0020 Equation and G0142 Confucius were promoted (MISP's own "Equation Group"
+reference list cites G0020 directly; "Confucious" is a documented misspelling
+of "Confucius"); G0114 Chimera was rejected against MISP's "WET PANDA" — the
+RapidFuzz 100 score was a `token_set_ratio` artifact ("Chimera" is a lexical
+subset of "Red Chimera"), not evidence of a shared identity, and no source
+connects the two beyond the coincidental name overlap.
 
 **Sigma rule -> ATT&CK mappings are the rule authors' own claims, not a
 MITRE-verified fact:** `sigma_rule_technique`/`sigma_rule_actor` come
@@ -368,7 +385,9 @@ pytest
 - `ingest/common.py` — shared fetch/count/data-quality-exit helpers for the ingest scripts above
 - `ingest/feeds.py`, `ingest/malpedia.py` — additional intel source ingests (not yet implemented)
 - `resolve/aliases.py` — cross-walks ATT&CK actors against MISP Galaxy's actor list
-  (`actor_xwalk`/`actor_xwalk_candidates`); run by hand, writes `data/reports/alias_resolution.md`
+  (`actor_xwalk`/`actor_xwalk_candidates`/`actor_xwalk_rejected`); run by hand, writes
+  `data/reports/alias_resolution.md`; re-applies hand-reviewed promote/reject decisions from
+  `data/seed/actor_xwalk_manual.json` on every run
 - `contracts.py` — design-by-contract helpers (`precondition`/`postcondition`/`not_none`/`bounded`) used across `app/`, `ingest/`, and `resolve/`; see `POWER10.md`
 - `model/schema.sql` — full schema reference for both database files
 - `CLAUDE.md` — repo guidance for AI assistants: commands, conventions, current phase status

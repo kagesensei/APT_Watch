@@ -196,17 +196,18 @@ CREATE TABLE actor_xwalk(
     attack_name VARCHAR,
     misp_uuid VARCHAR,           -- misp_actor.misp_uuid; UNIQUE by construction (checked at build time)
     misp_name VARCHAR,
-    match_method VARCHAR,          -- 'exact' (only kind resolve/aliases.py writes here) | 'manual'
-                                     -- ('manual' is reserved for a human promoting a candidate
-                                     -- below by hand; nothing writes it automatically yet)
-    match_score DOUBLE,               -- 100.0 for 'exact'
+    match_method VARCHAR,          -- 'exact' (mutual 1-to-1 after normalization) |
+                                     -- 'manual' (a fuzzy candidate promoted by a human --
+                                     -- see data/seed/actor_xwalk_manual.json)
+    match_score DOUBLE,               -- 100.0 for 'exact'; the original fuzzy score for 'manual'
     source_url VARCHAR,                 -- copied from the actor_alias row that produced the match
     retrieved DATE                        -- likewise
 );
 
 -- Every ATT&CK actor with zero exact matches, fuzzy-matched (RapidFuzz
--- token_set_ratio >= 90) against MISP's alias list. Never promoted to
--- actor_xwalk automatically -- see data/reports/alias_resolution.md.
+-- token_set_ratio >= 90) against MISP's alias list, MINUS any pair already
+-- decided in data/seed/actor_xwalk_manual.json (promoted or rejected --
+-- either way it's no longer "open"). See data/reports/alias_resolution.md.
 CREATE TABLE actor_xwalk_candidates(
     attack_stix_id VARCHAR,
     attack_id VARCHAR,
@@ -219,6 +220,21 @@ CREATE TABLE actor_xwalk_candidates(
     matched_misp_alias VARCHAR,      -- which MISP alias it matched against
     source_url VARCHAR,
     retrieved DATE
+);
+
+-- A fuzzy candidate a human reviewed and decided was NOT the same actor --
+-- kept so the same candidate doesn't need re-litigating on every re-run,
+-- and so the rejection's reasoning stays attached to the pair it applies
+-- to. Populated from data/seed/actor_xwalk_manual.json's "rejected" entries.
+CREATE TABLE actor_xwalk_rejected(
+    attack_stix_id VARCHAR,
+    attack_id VARCHAR,
+    attack_name VARCHAR,
+    misp_uuid VARCHAR,
+    misp_name VARCHAR,
+    match_score DOUBLE,  -- the original fuzzy score that was rejected
+    reason VARCHAR,         -- why, and what was checked to reach that conclusion
+    reviewed DATE
 );
 
 -- === Sigma detection rules (ingest/sigma.py) ===
