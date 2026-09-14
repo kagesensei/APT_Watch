@@ -1,0 +1,58 @@
+[tool.pylint.main]
+recursive = true
+py-version = "3.10"
+jobs = 0
+ignore = ["data"]
+# ingest/*.py scripts import the repo-root `contracts` module via a runtime
+# sys.path fix in ingest/common.py (they're run directly, one directory
+# down, with no ingest/__init__.py) -- pylint's static import resolution
+# can't see that, so it needs the same root-on-sys.path fix to resolve it.
+init-hook = "import sys; sys.path.insert(0, '.')"
+
+[tool.pylint.basic]
+# Idiomatic short names that are clearer than a longer alternative in this
+# codebase's domain (Flask blueprints, DuckDB connections, Flask's `g`).
+good-names = ["i", "j", "k", "ex", "Run", "_", "db", "bp", "g", "pk", "id", "ok"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.design]
+# Power of 10 rule 4 ("fits on one sheet of paper"): cap function size.
+max-statements = 60
+max-branches = 12
+max-args = 8
+max-positional-arguments = 8
+# 2D/SVG coordinate geometry (app/charts.py) genuinely needs more named
+# values in scope than typical business logic -- splitting further would
+# just shuffle the same complexity into more, harder-to-follow functions.
+max-locals = 20
+max-attributes = 12
+min-public-methods = 0
+
+[tool.pylint."messages control"]
+disable = [
+    "too-few-public-methods",  # plain data/config modules aren't classes here
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unreachable = true
+exclude = ["^tests/", "^data/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "duckdb.*",
+    "mitreattack.*",
+    "spacy.*",
+    "llama_cpp.*",
+    "stix2.*",
+    "stix2_patterns.*",
+    "diskcache.*",
+    "rapidfuzz.*",
+]
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv", "data"]

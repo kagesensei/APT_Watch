@@ -1,0 +1,86 @@
+[
+  {
+    "vendor": "CrowdStrike",
+    "term": "Bear",
+    "category": "nation-state",
+    "meaning": "Russia"
+  },
+  {
+    "vendor": "CrowdStrike",
+    "term": "Panda",
+    "category": "nation-state",
+    "meaning": "China"
+  },
+  {
+    "vendor": "CrowdStrike",
+    "term": "Kitten",
+    "category": "nation-state",
+    "meaning": "Iran"
+  },
+  {
+    "vendor": "CrowdStrike",
+    "term": "Chollima",
+    "category": "nation-state",
+    "meaning": "North Korea"
+  },
+  {
+    "vendor": "CrowdStrike",
+    "term": "Spider",
+    "category": "motivation",
+    "meaning": "financially motivated (eCrime)"
+  },
+  {
+    "vendor": "CrowdStrike",
+    "term": "Jackal",
+    "category": "motivation",
+    "meaning": "hacktivist"
+  },
+  {
+    "vendor": "Microsoft",
+    "term": "Typhoon",
+    "category": "nation-state",
+    "meaning": "China"
+  },
+  {
+    "vendor": "Microsoft",
+    "term": "Sandstorm",
+    "category": "nation-state",
+    "meaning": "Iran"
+  },
+  {
+    "vendor": "Microsoft",
+    "term": "Blizzard",
+    "category": "nation-state",
+    "meaning": "Russia"
+  },
+  {
+    "vendor": "Microsoft",
+    "term": "Sleet",
+    "category": "nation-state",
+    "meaning": "North Korea"
+  },
+  {
+    "vendor": "Microsoft",
+    "term": "Tempest",
+    "category": "motivation",
+    "meaning": "financially motivated (cybercriminal)"
+  },
+  {
+    "vendor": "Microsoft",
+    "term": "Flood",
+    "category": "motivation",
+    "meaning": "influence operations"
+  },
+  {
+    "vendor": "Secureworks",
+    "term": "BRONZE",
+    "category": "nation-state",
+    "meaning": "China"
+  },
+  {
+    "vendor": "Secureworks",
+    "term": "IRON",
+    "category": "nation-state",
+    "meaning": "Russia"
+  }
+]

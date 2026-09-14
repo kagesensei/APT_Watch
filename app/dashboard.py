@@ -1,6 +1,8 @@
+"""The Threat Terrain dashboard: aggregate charts over the ingested dataset."""
+
 from flask import Blueprint, render_template
 
-from . import charts
+from . import charts, queries
 from .db import get_db
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
@@ -23,29 +25,32 @@ TOP_N = 10
 
 
 @bp.route("/")
-def index():
+def index() -> str:
+    """Render the dashboard: overview counts, top rankings, and weekly KEV trend."""
     db = get_db()
 
-    counts = {
-        "actors": db.execute("SELECT COUNT(*) FROM actor").fetchone()[0],
-        "techniques": db.execute("SELECT COUNT(DISTINCT technique_id) FROM actor_technique").fetchone()[0],
-        "software": db.execute("SELECT COUNT(DISTINCT software_id) FROM actor_software").fetchone()[0],
-        "mitigations": db.execute("SELECT COUNT(DISTINCT mitigation_id) FROM technique_mitigation").fetchone()[0],
-        "cves": db.execute("SELECT COUNT(DISTINCT cve_id) FROM kev").fetchone()[0],
+    overview = queries.overview_counts(db)
+    counts: dict[str, int] = {
+        "actors": overview["actors"],
+        "techniques": overview["techniques"],
+        "software": overview["software"],
+        "mitigations": overview["mitigations"],
+        "cves": overview["cves"],
         "iocs": (
-            db.execute("SELECT COUNT(*) FROM ioc_url").fetchone()[0]
-            + db.execute("SELECT COUNT(*) FROM ioc_hash").fetchone()[0]
-            + db.execute("SELECT COUNT(*) FROM ioc_c2").fetchone()[0]
+            queries.count(db, "SELECT COUNT(*) FROM ioc_url")
+            + queries.count(db, "SELECT COUNT(*) FROM ioc_hash")
+            + queries.count(db, "SELECT COUNT(*) FROM ioc_c2")
         ),
     }
 
-    coverage_total = db.execute("SELECT COUNT(DISTINCT cve_id) FROM kev").fetchone()[0]
-    coverage_resolved = db.execute(
+    coverage_total = overview["cves"]
+    coverage_resolved = queries.count(
+        db,
         "SELECT COUNT(DISTINCT k.cve_id) FROM kev k "
         "JOIN kev_cwe kc ON kc.cve_id = k.cve_id "
         "JOIN capec_cwe cc ON cc.cwe_id = kc.cwe_id "
-        "JOIN capec_technique ct ON ct.capec_id = cc.capec_id"
-    ).fetchone()[0]
+        "JOIN capec_technique ct ON ct.capec_id = cc.capec_id",
+    )
     coverage_pct = round(100 * coverage_resolved / coverage_total) if coverage_total else 0
 
     top_techniques = db.execute(

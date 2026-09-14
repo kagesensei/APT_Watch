@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: pylint (Power of 10 rule 10 - static analysis, zero warnings)
+        run: pylint app ingest resolve contracts.py main.py preflight.py
+
+      - name: mypy --strict (Power of 10 rule 7 - checked return values/params)
+        run: mypy .
+
+      - name: bandit (Power of 10 rule 10 - security static analysis)
+        run: bandit -c pyproject.toml -r app ingest resolve contracts.py main.py preflight.py
+
+      - name: pytest
+        run: pytest

@@ -1,6 +1,12 @@
-from flask import Blueprint, abort, render_template, request
+"""The Library: browsable, paginated, searchable ATT&CK/KEV reference pages."""
 
-from . import intel
+from flask import Blueprint, abort, render_template, request
+from werkzeug.datastructures import MultiDict
+from werkzeug.wrappers import Response
+
+from contracts import precondition
+
+from . import intel, queries
 from .cache import get_cache_db
 from .db import get_db
 
@@ -9,7 +15,8 @@ bp = Blueprint("main", __name__, url_prefix="/library")
 PAGE_SIZE = 50
 
 
-def paginate(args):
+def paginate(args: MultiDict[str, str]) -> tuple[int, int, int]:
+    """Parse a ?page= query param into (page, page_size, row_offset)."""
     try:
         page = max(1, int(args.get("page", 1)))
     except ValueError:
@@ -18,33 +25,27 @@ def paginate(args):
 
 
 @bp.route("/")
-def index():
+def index() -> str:
+    """Library home: total entity counts, linking to each browsable list."""
     db = get_db()
-    counts = {
-        "actors": db.execute("SELECT COUNT(*) FROM actor").fetchone()[0],
-        "techniques": db.execute("SELECT COUNT(DISTINCT technique_id) FROM actor_technique").fetchone()[0],
-        "software": db.execute("SELECT COUNT(DISTINCT software_id) FROM actor_software").fetchone()[0],
-        "mitigations": db.execute("SELECT COUNT(DISTINCT mitigation_id) FROM technique_mitigation").fetchone()[0],
-        "cves": db.execute("SELECT COUNT(DISTINCT cve_id) FROM kev").fetchone()[0],
-    }
+    counts = queries.overview_counts(db)
     return render_template("index.html", counts=counts)
 
 
 @bp.route("/actors")
-def actors():
+def actors() -> str:
+    """Paginated, searchable list of ATT&CK groups."""
     db = get_db()
     q = request.args.get("q", "").strip()
     page, size, offset = paginate(request.args)
 
-    where = "WHERE name ILIKE ? OR aliases ILIKE ?" if q else ""
-    params = [f"%{q}%", f"%{q}%"] if q else []
-
-    total = db.execute(f"SELECT COUNT(*) FROM actor {where}", params).fetchone()[0]
-    rows = db.execute(
-        f"SELECT stix_id, attack_id, name, aliases FROM actor {where} "
-        "ORDER BY name LIMIT ? OFFSET ?",
-        params + [size, offset],
-    ).fetchall()
+    total, rows = queries.searchable_list(
+        db,
+        queries.ListQuery(
+            "actor", "COUNT(*)", "stix_id, attack_id, name, aliases", ["name", "aliases"], "name"
+        ),
+        q, size, offset,
+    )
 
     return render_template(
         "actors.html", actors=rows, q=q, page=page, total=total, size=size
@@ -52,7 +53,9 @@ def actors():
 
 
 @bp.route("/actors/<stix_id>")
-def actor_detail(stix_id):
+def actor_detail(stix_id: str) -> str:
+    """One ATT&CK group's documented techniques and software."""
+    precondition(bool(stix_id), "stix_id must not be empty")
     db = get_db()
     actor = db.execute(
         "SELECT stix_id, attack_id, name, aliases FROM actor WHERE stix_id = ?",
@@ -61,39 +64,47 @@ def actor_detail(stix_id):
     if actor is None:
         abort(404)
 
-    techniques = db.execute(
+    actor_techniques = db.execute(
         "SELECT DISTINCT technique_id, technique_name FROM actor_technique "
         "WHERE actor_stix_id = ? ORDER BY technique_id",
         [stix_id],
     ).fetchall()
-    software = db.execute(
+    actor_software = db.execute(
         "SELECT DISTINCT software_id, software_name, software_type FROM actor_software "
         "WHERE actor_stix_id = ? ORDER BY software_name",
         [stix_id],
     ).fetchall()
 
+    attack_id, aliases_field = actor[1], actor[3]
+    naming_facts = intel.naming_convention_facts(
+        intel.parse_aliases(aliases_field), db
+    ) + intel.alias_note_facts(attack_id, db)
+
     return render_template(
-        "actor_detail.html", actor=actor, techniques=techniques, software=software
+        "actor_detail.html",
+        actor=actor,
+        techniques=actor_techniques,
+        software=actor_software,
+        naming_facts=naming_facts,
     )
 
 
 @bp.route("/techniques")
-def techniques():
+def techniques() -> str:
+    """Paginated, searchable list of ATT&CK techniques."""
     db = get_db()
     q = request.args.get("q", "").strip()
     page, size, offset = paginate(request.args)
 
-    where = "WHERE technique_id ILIKE ? OR technique_name ILIKE ?" if q else ""
-    params = [f"%{q}%", f"%{q}%"] if q else []
-
-    total = db.execute(
-        f"SELECT COUNT(DISTINCT technique_id) FROM actor_technique {where}", params
-    ).fetchone()[0]
-    rows = db.execute(
-        f"SELECT DISTINCT technique_id, technique_name FROM actor_technique {where} "
-        "ORDER BY technique_id LIMIT ? OFFSET ?",
-        params + [size, offset],
-    ).fetchall()
+    total, rows = queries.searchable_list(
+        db,
+        queries.ListQuery(
+            "actor_technique", "COUNT(DISTINCT technique_id)",
+            "DISTINCT technique_id, technique_name",
+            ["technique_id", "technique_name"], "technique_id",
+        ),
+        q, size, offset,
+    )
 
     return render_template(
         "techniques.html", techniques=rows, q=q, page=page, total=total, size=size
@@ -101,19 +112,18 @@ def techniques():
 
 
 @bp.route("/techniques/<technique_id>")
-def technique_detail(technique_id):
+def technique_detail(technique_id: str) -> str:
+    """One ATT&CK technique's mitigations and the actors documented using it."""
+    precondition(bool(technique_id), "technique_id must not be empty")
     db = get_db()
-    name_row = db.execute(
-        "SELECT DISTINCT technique_name FROM actor_technique WHERE technique_id = ?",
-        [technique_id],
-    ).fetchone()
-    mitigations = db.execute(
+    found_name = queries.technique_name(db, technique_id)
+    technique_mitigations = db.execute(
         "SELECT DISTINCT mitigation_id, mitigation_name FROM technique_mitigation "
         "WHERE technique_id = ? ORDER BY mitigation_id",
         [technique_id],
     ).fetchall()
 
-    if name_row is None and not mitigations:
+    if found_name is None and not technique_mitigations:
         abort(404)
 
     actors_using = db.execute(
@@ -123,34 +133,33 @@ def technique_detail(technique_id):
         [technique_id],
     ).fetchall()
 
-    technique_name = name_row[0] if name_row else technique_id
+    technique_name = found_name or technique_id
 
     return render_template(
         "technique_detail.html",
         technique_id=technique_id,
         technique_name=technique_name,
         actors=actors_using,
-        mitigations=mitigations,
+        mitigations=technique_mitigations,
     )
 
 
 @bp.route("/software")
-def software():
+def software() -> str:
+    """Paginated, searchable list of ATT&CK software."""
     db = get_db()
     q = request.args.get("q", "").strip()
     page, size, offset = paginate(request.args)
 
-    where = "WHERE software_name ILIKE ?" if q else ""
-    params = [f"%{q}%"] if q else []
-
-    total = db.execute(
-        f"SELECT COUNT(DISTINCT software_id) FROM actor_software {where}", params
-    ).fetchone()[0]
-    rows = db.execute(
-        f"SELECT DISTINCT software_id, software_name, software_type FROM actor_software {where} "
-        "ORDER BY software_name LIMIT ? OFFSET ?",
-        params + [size, offset],
-    ).fetchall()
+    total, rows = queries.searchable_list(
+        db,
+        queries.ListQuery(
+            "actor_software", "COUNT(DISTINCT software_id)",
+            "DISTINCT software_id, software_name, software_type",
+            ["software_name"], "software_name",
+        ),
+        q, size, offset,
+    )
 
     return render_template(
         "software.html", software=rows, q=q, page=page, total=total, size=size
@@ -158,7 +167,9 @@ def software():
 
 
 @bp.route("/software/<software_id>")
-def software_detail(software_id):
+def software_detail(software_id: str) -> str:
+    """One ATT&CK software entry and the actors documented using it."""
+    precondition(bool(software_id), "software_id must not be empty")
     db = get_db()
     row = db.execute(
         "SELECT DISTINCT software_id, software_name, software_type FROM actor_software "
@@ -179,22 +190,21 @@ def software_detail(software_id):
 
 
 @bp.route("/mitigations")
-def mitigations():
+def mitigations() -> str:
+    """Paginated, searchable list of ATT&CK mitigations."""
     db = get_db()
     q = request.args.get("q", "").strip()
     page, size, offset = paginate(request.args)
 
-    where = "WHERE mitigation_id ILIKE ? OR mitigation_name ILIKE ?" if q else ""
-    params = [f"%{q}%", f"%{q}%"] if q else []
-
-    total = db.execute(
-        f"SELECT COUNT(DISTINCT mitigation_id) FROM technique_mitigation {where}", params
-    ).fetchone()[0]
-    rows = db.execute(
-        f"SELECT DISTINCT mitigation_id, mitigation_name FROM technique_mitigation {where} "
-        "ORDER BY mitigation_id LIMIT ? OFFSET ?",
-        params + [size, offset],
-    ).fetchall()
+    total, rows = queries.searchable_list(
+        db,
+        queries.ListQuery(
+            "technique_mitigation", "COUNT(DISTINCT mitigation_id)",
+            "DISTINCT mitigation_id, mitigation_name",
+            ["mitigation_id", "mitigation_name"], "mitigation_id",
+        ),
+        q, size, offset,
+    )
 
     return render_template(
         "mitigations.html", mitigations=rows, q=q, page=page, total=total, size=size
@@ -202,13 +212,12 @@ def mitigations():
 
 
 @bp.route("/mitigations/<mitigation_id>")
-def mitigation_detail(mitigation_id):
+def mitigation_detail(mitigation_id: str) -> str:
+    """One ATT&CK mitigation and the techniques it's documented to address."""
+    precondition(bool(mitigation_id), "mitigation_id must not be empty")
     db = get_db()
-    name_row = db.execute(
-        "SELECT DISTINCT mitigation_name FROM technique_mitigation WHERE mitigation_id = ?",
-        [mitigation_id],
-    ).fetchone()
-    if name_row is None:
+    found_name = queries.mitigation_name(db, mitigation_id)
+    if found_name is None:
         abort(404)
 
     techniques_mitigated = db.execute(
@@ -221,32 +230,35 @@ def mitigation_detail(mitigation_id):
     return render_template(
         "mitigation_detail.html",
         mitigation_id=mitigation_id,
-        mitigation_name=name_row[0],
+        mitigation_name=found_name,
         techniques=techniques_mitigated,
     )
 
 
 @bp.route("/cves")
-def cves():
+def cves() -> str:
+    """Paginated, searchable list of CISA KEV entries."""
     db = get_db()
     q = request.args.get("q", "").strip()
     page, size, offset = paginate(request.args)
 
-    where = "WHERE cve_id ILIKE ? OR vulnerability_name ILIKE ?" if q else ""
-    params = [f"%{q}%", f"%{q}%"] if q else []
-
-    total = db.execute(f"SELECT COUNT(*) FROM kev {where}", params).fetchone()[0]
-    rows = db.execute(
-        f"SELECT cve_id, vulnerability_name, vendor_project, product, date_added, known_ransomware "
-        f"FROM kev {where} ORDER BY date_added DESC LIMIT ? OFFSET ?",
-        params + [size, offset],
-    ).fetchall()
+    total, rows = queries.searchable_list(
+        db,
+        queries.ListQuery(
+            "kev", "COUNT(*)",
+            "cve_id, vulnerability_name, vendor_project, product, date_added, known_ransomware",
+            ["cve_id", "vulnerability_name"], "date_added DESC",
+        ),
+        q, size, offset,
+    )
 
     return render_template("cves.html", cves=rows, q=q, page=page, total=total, size=size)
 
 
 @bp.route("/cves/<cve_id>")
-def cve_detail(cve_id):
+def cve_detail(cve_id: str) -> str | Response:
+    """One CVE's KEV record plus its full crosswalk facts (see app/intel.py)."""
+    precondition(bool(cve_id), "cve_id must not be empty")
     db = get_db()
     kev_row = db.execute(
         "SELECT vulnerability_name, vendor_project, product, date_added, due_date, "

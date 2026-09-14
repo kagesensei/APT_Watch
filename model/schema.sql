@@ -133,6 +133,25 @@ CREATE TABLE ioc_software(     -- crosswalk built at ingest time
     software_name VARCHAR
 );
 
+-- === Naming conventions (ingest/naming.py) ===
+-- Hand-curated reference data (data/seed/*.json), not from any live feed:
+-- what a vendor's naming-scheme word denotes, and documented etymology for
+-- specific aliases. See app/intel.py's naming_convention_facts()/
+-- alias_note_facts() for how these become chat/Library facts.
+
+CREATE TABLE naming_convention(
+    vendor VARCHAR,    -- e.g. 'CrowdStrike', 'Microsoft', 'Secureworks'
+    term VARCHAR,       -- the naming-scheme word, e.g. 'Panda', 'Bear', 'Typhoon'
+    category VARCHAR,   -- 'nation-state' | 'motivation'
+    meaning VARCHAR      -- e.g. 'China', 'financially motivated (eCrime)'
+);
+
+CREATE TABLE actor_alias_note(
+    attack_id VARCHAR,  -- actor.attack_id, e.g. G0006
+    alias VARCHAR,        -- the specific alias this note explains, e.g. 'Comment Crew'
+    note VARCHAR          -- documented etymology, with its source named in the text
+);
+
 -- The CVE -> ATT&CK technique crosswalk used by the chat feature (app/intel.py)
 -- joins across all of the above:
 --

@@ -1,3 +1,7 @@
+# Runtime dependencies only (a full `pip freeze` snapshot, transitive deps
+# included, for a reproducible environment). Running `python main.py` also
+# requires pylint/mypy/bandit (the pre-flight gate in preflight.py) -- see
+# requirements-dev.txt, which layers those on top of this file.
 annotated-doc==0.0.5
 annotated-types==0.8.0
 antlr4-python3-runtime==4.13.2

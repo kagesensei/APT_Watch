@@ -241,11 +241,83 @@ class TestLookupMitigation:
 
 class TestLookupActor:
     def test_known_actor_returns_technique_and_software_facts(self, db):
-        stix_id, name = db.execute("SELECT stix_id, name FROM actor LIMIT 1").fetchone()
-        facts, sources = intel.lookup_actor(stix_id, name, db)
+        stix_id, _name = db.execute("SELECT stix_id, name FROM actor LIMIT 1").fetchone()
+        facts, sources = intel.lookup_actor(stix_id, db)
         assert facts
         assert all(f["derived"] is False for f in facts)
-        assert {f["category"] for f in facts} <= {"actor_usage"}
+        assert {f["category"] for f in facts} <= {"actor_usage", "naming_note"}
 
     def test_unknown_actor_returns_empty_lists(self, db):
-        assert intel.lookup_actor("intrusion-set--nonexistent", "Nobody", db) == ([], [])
+        assert intel.lookup_actor("intrusion-set--nonexistent", db) == ([], [])
+
+    def test_includes_naming_convention_fact_for_a_panda_alias(self, db):
+        stix_id = db.execute(
+            "SELECT stix_id FROM actor WHERE attack_id = 'G0006'"
+        ).fetchone()[0]
+        facts, _sources = intel.lookup_actor(stix_id, db)
+        naming_facts = [f for f in facts if f["category"] == "naming_note"]
+        assert any("Comment Panda" in f["text"] and "China" in f["text"] for f in naming_facts)
+
+    def test_includes_alias_etymology_note_for_comment_crew(self, db):
+        stix_id = db.execute(
+            "SELECT stix_id FROM actor WHERE attack_id = 'G0006'"
+        ).fetchone()[0]
+        facts, _sources = intel.lookup_actor(stix_id, db)
+        naming_facts = [f for f in facts if f["category"] == "naming_note"]
+        assert any("Comment Crew" in f["text"] and "HTML comment" in f["text"] for f in naming_facts)
+
+
+class TestParseAliases:
+    def test_splits_and_strips_semicolon_separated_aliases(self):
+        assert intel.parse_aliases("APT1; Comment Crew ;Comment Panda") == [
+            "APT1", "Comment Crew", "Comment Panda",
+        ]
+
+    def test_handles_none_and_empty_string(self):
+        assert intel.parse_aliases(None) == []
+        assert intel.parse_aliases("") == []
+
+
+class TestNamingConventionFacts:
+    def test_matches_a_panda_alias_to_china(self, db):
+        facts = intel.naming_convention_facts(["Stone Panda"], db)
+        assert any("China" in f["text"] and "naming_note" == f["category"] for f in facts)
+
+    def test_matches_a_bear_alias_to_russia(self, db):
+        facts = intel.naming_convention_facts(["Fancy Bear"], db)
+        assert any("Russia" in f["text"] for f in facts)
+
+    def test_does_not_match_an_unrelated_alias(self, db):
+        assert intel.naming_convention_facts(["Threat Group-1234"], db) == []
+
+    def test_empty_aliases_returns_no_facts(self, db):
+        assert intel.naming_convention_facts([], db) == []
+
+    def test_does_not_match_a_substring_of_a_longer_word(self, db):
+        # "Iron" is not a naming-convention term; "IRON" (Secureworks) must
+        # only match as a whole word, not as a substring of an unrelated word.
+        assert intel.naming_convention_facts(["Irontown Group"], db) == []
+
+
+class TestAliasNoteFacts:
+    def test_returns_the_comment_crew_note_for_apt1(self, db):
+        facts = intel.alias_note_facts("G0006", db)
+        assert any("Comment Crew" in f["text"] for f in facts)
+
+    def test_returns_nothing_for_an_actor_with_no_note(self, db):
+        assert intel.alias_note_facts("G9999", db) == []
+
+
+class TestLookupNamingTerm:
+    def test_known_term_returns_facts_and_sources(self, db):
+        facts, sources = intel.lookup_naming_term("Panda", db)
+        assert facts
+        assert any("China" in f["text"] for f in facts)
+        assert sources
+
+    def test_matching_is_case_insensitive(self, db):
+        facts, _sources = intel.lookup_naming_term("panda", db)
+        assert facts
+
+    def test_unknown_term_returns_empty_lists(self, db):
+        assert intel.lookup_naming_term("Aardvark", db) == ([], [])

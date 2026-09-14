@@ -1,9 +1,16 @@
+"""Local LLM wrapper: build a fact-grounded prompt and guard against the
+model inventing IDs that were never in the retrieved facts.
+"""
+
 import ctypes
+import functools
 import importlib.util
 import os
 import pathlib
 import re
 import sys
+
+from contracts import ContractViolation, not_none, precondition
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_MODEL_PATH = ROOT / "models" / "meta-llama-3.1-8b-instruct-abliterated.Q4_K_M.gguf"
@@ -11,7 +18,7 @@ DEFAULT_MODEL_PATH = ROOT / "models" / "meta-llama-3.1-8b-instruct-abliterated.Q
 MAX_FACTS = 20
 
 
-def _preload_windows_cuda_deps():
+def _preload_windows_cuda_deps() -> None:
     """Work around a ctypes quirk on Windows/Python 3.10: llama_cpp loads its
     DLLs with ctypes.CDLL(absolute_path, winmode=RTLD_GLOBAL), which fails to
     resolve dependent DLLs (the CUDA runtime) via os.add_dll_directory even
@@ -38,7 +45,9 @@ def _preload_windows_cuda_deps():
 
     os.add_dll_directory(str(lib_dir))
 
-    for name in ("ggml-base.dll", "ggml-cpu.dll", "ggml-cuda.dll", "ggml.dll", "llama.dll", "llava.dll"):
+    for name in (
+        "ggml-base.dll", "ggml-cpu.dll", "ggml-cuda.dll", "ggml.dll", "llama.dll", "llava.dll",
+    ):
         dll_path = lib_dir / name
         if dll_path.exists():
             try:
@@ -49,27 +58,39 @@ def _preload_windows_cuda_deps():
 
 _preload_windows_cuda_deps()
 
-from llama_cpp import Llama  # noqa: E402  (must follow the DLL preload above)
+# The DLL preload above must run before this import (that's the whole point
+# of _preload_windows_cuda_deps), so it cannot be moved to the top of the
+# file with the other imports.
+from llama_cpp import Llama  # noqa: E402  pylint: disable=wrong-import-position,wrong-import-order
+from llama_cpp.llama_types import (  # noqa: E402  pylint: disable=wrong-import-position,wrong-import-order
+    ChatCompletionRequestMessage,
+)
 
-_llm = None
+# Module-level import is deferred past the DLL preload above, so app.intel
+# (which has no such constraint) is imported here rather than at the top,
+# for a single clear "everything above this line is DLL setup" boundary.
+from . import intel  # noqa: E402  pylint: disable=wrong-import-position
 
 
-def get_llm():
-    global _llm
-    if _llm is None:
-        model_path = os.environ.get("APTWATCH_MODEL_PATH", str(DEFAULT_MODEL_PATH))
-        if not pathlib.Path(model_path).exists():
-            raise FileNotFoundError(
-                f"No LLM model found at {model_path}. Set APTWATCH_MODEL_PATH or place "
-                "the GGUF file at the default location (see README)."
-            )
-        _llm = Llama(
-            model_path=model_path,
-            n_gpu_layers=int(os.environ.get("APTWATCH_MODEL_GPU_LAYERS", "-1")),
-            n_ctx=int(os.environ.get("APTWATCH_MODEL_CTX", "8192")),
-            verbose=False,
+@functools.lru_cache(maxsize=1)
+def get_llm() -> Llama:
+    """Load the GGUF model once per process and cache it -- loading an 8B
+    model is far too expensive to repeat per request, so this is the one
+    piece of module-lifetime mutable state in the app, deliberately kept to
+    a single cached singleton rather than a bare module-global.
+    """
+    model_path = os.environ.get("APTWATCH_MODEL_PATH", str(DEFAULT_MODEL_PATH))
+    if not pathlib.Path(model_path).exists():
+        raise FileNotFoundError(
+            f"No LLM model found at {model_path}. Set APTWATCH_MODEL_PATH or place "
+            "the GGUF file at the default location (see README)."
         )
-    return _llm
+    return Llama(
+        model_path=model_path,
+        n_gpu_layers=int(os.environ.get("APTWATCH_MODEL_GPU_LAYERS", "-1")),
+        n_ctx=int(os.environ.get("APTWATCH_MODEL_CTX", "8192")),
+        verbose=False,
+    )
 
 
 SYSTEM_PROMPT = """You are the chat assistant for APT_Watch, a threat-intelligence tool.
@@ -110,22 +131,25 @@ ID_PATTERNS = [
 ]
 
 
-def _ids_in_text(text):
-    ids = set()
+def _ids_in_text(text: str) -> set[str]:
+    ids: set[str] = set()
     for pattern in ID_PATTERNS:
         ids.update(m.upper() for m in pattern.findall(text))
     return ids
 
 
-def allowed_ids(facts):
-    allowed = set()
-    for f in facts:
-        allowed.add(f["source"]["id"].upper())
-        allowed.update(_ids_in_text(f["text"]))
+def allowed_ids(facts: list["intel.Fact"]) -> set[str]:
+    """Every ID a reply is allowed to mention: each fact's own source id,
+    plus any ID pattern already present in that fact's own text.
+    """
+    allowed: set[str] = set()
+    for fact in facts:
+        allowed.add(fact["source"]["id"].upper())
+        allowed.update(_ids_in_text(fact["text"]))
     return allowed
 
 
-def _check_for_fabricated_ids(reply, facts):
+def _check_for_fabricated_ids(reply: str, facts: list["intel.Fact"]) -> str:
     unverified = _ids_in_text(reply) - allowed_ids(facts)
     if not unverified:
         return reply
@@ -147,16 +171,21 @@ MAX_PER_TIER = 8
 # silently crowd out a smaller, more directly relevant one (mitigations, or
 # IOC correlations) before the fact cap. Each tier gets its own reserved
 # slice of the budget instead of competing in one shared pool.
-CATEGORY_PRIORITY = ["vuln_info", "mitigation", "ioc", "actor_usage", "crosswalk_detail"]
+CATEGORY_PRIORITY = [
+    "naming_note", "vuln_info", "mitigation", "ioc", "actor_usage", "crosswalk_detail",
+]
 
 
-def build_context(facts):
+def build_context(facts: list["intel.Fact"]) -> str:
+    """Render facts as a numbered, priority-tiered, budget-capped list for
+    the prompt -- see CATEGORY_PRIORITY and MAX_PER_TIER above for why.
+    """
     if not facts:
         return "(No matching facts were found in the database for this question.)"
 
-    tiers = {name: [] for name in CATEGORY_PRIORITY}
-    for f in facts:
-        tiers.setdefault(f.get("category", "actor_usage"), []).append(f)
+    tiers: dict[str, list["intel.Fact"]] = {name: [] for name in CATEGORY_PRIORITY}
+    for fact in facts:
+        tiers.setdefault(fact.get("category", "actor_usage"), []).append(fact)
 
     # Within vuln_info, a "why this couldn't be answered" coverage note is the
     # single most load-bearing fact for a TTP/APT-style question that dead-
@@ -178,13 +207,18 @@ def build_context(facts):
     return "\n".join(f"{i + 1}. {line}" for i, line in enumerate(lines))
 
 
-def answer(question, facts):
+def answer(question: str, facts: list["intel.Fact"]) -> str:
+    """Ask the local LLM to answer `question` grounded only in `facts`."""
+    precondition(bool(question), "question must not be empty")
     llm = get_llm()
     context = build_context(facts)
-    messages = [
+    messages: list[ChatCompletionRequestMessage] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"FACTS:\n{context}\n\nQUESTION: {question}"},
     ]
     result = llm.create_chat_completion(messages=messages, temperature=0.2, max_tokens=900)
-    reply = result["choices"][0]["message"]["content"].strip()
+    if not isinstance(result, dict):
+        raise ContractViolation("non-streaming call must return a single response, not a stream")
+    content = result["choices"][0]["message"]["content"]
+    reply = not_none(content, "LLM response must include message content").strip()
     return _check_for_fabricated_ids(reply, facts)

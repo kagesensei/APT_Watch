@@ -28,6 +28,7 @@ python ingest/attack.py   # MITRE ATT&CK Enterprise (actors, techniques, softwar
 python ingest/capec.py    # MITRE CAPEC (attack patterns; the CVE->technique crosswalk)
 python ingest/cve.py      # CISA Known Exploited Vulnerabilities catalog
 python ingest/ioc.py      # IOC feeds: URLhaus, MalwareBazaar, Feodo Tracker (no signup needed)
+python ingest/naming.py   # curated vendor naming-convention data (data/seed/*.json, no network)
 ```
 
 | table | source | description |
@@ -45,12 +46,24 @@ python ingest/ioc.py      # IOC feeds: URLhaus, MalwareBazaar, Feodo Tracker (no
 | `ioc_hash` | MalwareBazaar | file hashes (MD5/SHA1/SHA256), tagged with a malware family |
 | `ioc_c2` | Feodo Tracker | active botnet C2 IPs, tagged with a malware family |
 | `ioc_software` | (crosswalk) | IOC malware family name matched against `actor_software.software_name` |
+| `naming_convention` | curated (`data/seed/naming_conventions.json`) | what a vendor's naming-scheme word denotes, e.g. CrowdStrike's "Panda" = China, "Bear" = Russia |
+| `actor_alias_note` | curated (`data/seed/actor_alias_notes.json`) | documented etymology for specific aliases, e.g. why "Comment Crew" |
 
 Revoked/deprecated ATT&CK and CAPEC objects are excluded. Each script prints
-row counts and runs a data quality check comparing its tables against the
+row counts and runs a data quality check — comparing its tables against the
 publisher's own totals (ATT&CK/CAPEC entity counts, the CISA catalog's
-published `count`), exiting non-zero if any check fails. Full schema
-reference: `model/schema.sql`.
+published `count`) for the four feed-based scripts, or against the seed
+file's own row count for `ingest/naming.py` — exiting non-zero if any check
+fails. Full schema reference: `model/schema.sql`.
+
+**Naming conventions are curated, not fetched:** unlike the other four
+tables, no feed publishes "what does Panda mean" — `naming_convention` and
+`actor_alias_note` are hand-researched and reviewed like code
+(`data/seed/*.json`), covering only entries confirmed with reasonably high
+confidence. They're deliberately not comprehensive; extend the seed files
+and re-run `ingest/naming.py` to add more. Chat surfaces these as
+`naming_note` facts (see `intel.naming_convention_facts`/`alias_note_facts`),
+and the actor Library page shows them under "What the names mean."
 
 **Important caveat:** MITRE does not publish a CVE-to-ATT&CK mapping. The
 CVE→technique link used throughout this app is *computed* by this project via
@@ -78,8 +91,18 @@ python -c "import duckdb; print(duckdb.connect('data/cti.duckdb').sql('SELECT * 
 Once `data/cti.duckdb` exists, run the Flask app:
 
 ```bash
+pip install -r requirements-dev.txt   # now required to run the app, not just to lint it
 python main.py
 ```
+
+`python main.py` runs a pre-flight quality gate — `pylint`, `mypy --strict`,
+`bandit`, and the full `pytest` suite — before the server starts listening,
+and refuses to start if any of them fail (see `preflight.py`). This takes
+several seconds and needs `requirements-dev.txt` installed. Set
+`APTWATCH_SKIP_PREFLIGHT=1` to skip it for fast local iteration (e.g. while
+mid-edit and deliberately red) — CI (`.github/workflows/ci.yml`) still runs
+every check unconditionally on every push, so nothing skips review
+permanently.
 
 Then open http://127.0.0.1:5000/ — **Chat is the home page.** Everything else
 (Actors, Techniques, Software, Mitigations, CVEs, and an Overview dashboard)
@@ -93,9 +116,11 @@ lives under the **Library** dropdown in the nav bar, at `/library/...`:
   so what chat says about a CVE and what its Library page shows are always the
   same underlying query (`intel.lookup_cve`)
 
-`main.py` runs the built-in Flask dev server with debug mode on, for local use
-only. Custom error pages are included for 400, 403, 404, 405, and 500
-responses (plus a generic fallback for any other HTTP error).
+`main.py` runs the built-in Flask dev server, for local use only. Debug mode
+(the interactive Werkzeug debugger, which allows arbitrary code execution
+from the browser) is **off by default** — set `APTWATCH_DEBUG=1` to enable it
+for local development. Custom error pages are included for 400, 403, 404,
+405, and 500 responses (plus a generic fallback for any other HTTP error).
 
 ## Dashboard
 
@@ -255,21 +280,45 @@ a local dev app right now.
 pytest
 ```
 
-119 tests covering entity extraction, the CVE→CWE→CAPEC→ATT&CK crosswalk
-(both success and dead-end branches), IOC lookups, the chart builders, and
-every Flask route — run in a few seconds against the real committed
-`data/cti.duckdb` snapshot, with the local LLM and NVD network calls mocked
-out. See `TESTING.md` for what each test file covers and a manual walkthrough
-for the parts that need a browser or the local LLM (chat answer quality,
-dashboard visuals, Google sign-in).
+150 tests covering entity extraction, the CVE→CWE→CAPEC→ATT&CK crosswalk
+(both success and dead-end branches), IOC lookups, the chart builders, the
+design-by-contract helpers in `contracts.py`, naming-convention/alias-etymology
+lookups, and every Flask route — run in a few seconds against the real
+committed `data/cti.duckdb` snapshot, with the local LLM and NVD network calls
+mocked out. See `TESTING.md` for what each test file covers and a manual
+walkthrough for the parts that need a browser or the local LLM (chat answer
+quality, dashboard visuals, Google sign-in).
+
+## Code quality and security
+
+This codebase follows an adaptation of NASA/JPL's "Power of 10" rules for
+safety-critical code — see `POWER10.md` for what each rule means here and
+why. In short: small, single-purpose functions; every loop's bound is
+either obvious or enforced by `contracts.bounded()`; every DB/API return
+value is checked (`contracts.not_none()` and friends); and `pylint`, `mypy
+--strict`, and `bandit` all run in CI on every push, alongside `pytest` —
+**and all four run again every time `python main.py` starts** (see
+`preflight.py`), so a broken local checkout can't serve traffic even if
+nobody remembered to run CI.
+
+```bash
+pip install -r requirements-dev.txt
+pylint app ingest resolve contracts.py main.py preflight.py
+mypy .
+bandit -c pyproject.toml -r app ingest resolve contracts.py main.py preflight.py
+pytest
+```
 
 ## Project layout
 
 - `ingest/attack.py`, `ingest/capec.py`, `ingest/cve.py`, `ingest/ioc.py` —
   implemented ingest pipelines (see Data ingest above)
+- `ingest/naming.py`, `data/seed/*.json` — curated vendor naming-convention data (no network source)
+- `ingest/common.py` — shared fetch/count/data-quality-exit helpers for the ingest scripts above
 - `ingest/feeds.py`, `ingest/malpedia.py`, `ingest/misp_galaxy.py` — additional
   intel source ingests (not yet implemented)
 - `resolve/aliases.py` — actor alias resolution across sources (not yet implemented)
+- `contracts.py` — design-by-contract helpers (`precondition`/`postcondition`/`not_none`/`bounded`) used across `app/`, `ingest/`, and `resolve/`; see `POWER10.md`
 - `model/schema.sql` — full schema reference for both database files
 - `tests/` — pytest suite (see Testing above); `TESTING.md` — what it covers plus a manual walkthrough
 - `app/` — Flask application:
@@ -279,7 +328,7 @@ dashboard visuals, Google sign-in).
   - `dashboard.py` (mounted at `/dashboard`), `templates/dashboard.html` — the Threat Terrain dashboard
   - `charts.py` — dependency-free inline-SVG chart builders for the dashboard
   - `nlp.py` — entity extraction for chat and the scan page (CVE/technique/mitigation IDs, actor/software fuzzy matching, hash/IP/URL indicators)
-  - `intel.py` — fact retrieval + source citation for chat, the CVE Library page, and IOC lookups (the only module that queries the DB for facts)
+  - `intel.py` — fact retrieval + source citation for chat, the CVE Library page, and IOC lookups (the only module that queries the DB for facts); also naming-convention/alias-etymology facts (why "Comment Crew", what "Panda" means)
   - `llm.py` — local LLM loading, prompting, the fabricated-ID guard, and per-category context budgeting
   - `linkify.py` — turns verified IDs in an answer into clickable Library links
   - `preview.py` — `/api/preview/<type>/<id>` API backing the view panel
@@ -288,7 +337,9 @@ dashboard visuals, Google sign-in).
   - `templates/chat.html`, `static/js/chat.js` — the 3-column chat page's markup/JS
   - `templates/scan.html`, `static/js/scan.js` — the scan page's markup/JS
   - `db.py`, `cache.py` — read-only main DB connection, writable NVD cache connection
-- `main.py` — Flask app entry point; loads `.env` via `python-dotenv`
+  - `queries.py` — small shared DB query helpers (`count`, `overview_counts`, `searchable_list`) used by `routes.py`, `preview.py`, `dashboard.py`, and `intel.py`
+- `main.py` — Flask app entry point; loads `.env` via `python-dotenv`, runs `preflight.py`'s gate before serving
+- `preflight.py` — the pylint/mypy/bandit/pytest startup gate (`APTWATCH_SKIP_PREFLIGHT=1` to bypass)
 - `models/` — local GGUF model files (gitignored)
 - `data/cti.duckdb` — built database, committed as a snapshot
 - `data/nvd_cache.duckdb` — on-demand NVD lookup cache (gitignored)

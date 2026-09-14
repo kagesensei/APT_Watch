@@ -1,6 +1,14 @@
-import re
+"""Extract CVE/technique/mitigation IDs, IOCs, and actor/software names from
+free text (a chat message or a scanned file), without an LLM call.
+"""
 
+import re
+from typing import TypedDict
+
+import duckdb
 from rapidfuzz import fuzz
+
+from contracts import precondition
 
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
 TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b", re.IGNORECASE)
@@ -22,6 +30,12 @@ URL_RE = re.compile(r"https?://\S+")
 MIN_FUZZY_LEN = 6
 FUZZY_THRESHOLD = 92
 
+# Matches app/__init__.py's Flask-wide MAX_CONTENT_LENGTH: every regex below
+# runs directly over caller-supplied text (a chat message or scanned file),
+# so this is rule 2's "fixed upper bound" made explicit at the point that
+# text enters this module, not just relied on implicitly at the HTTP layer.
+MAX_TEXT_LENGTH = 5 * 1024 * 1024
+
 # Open-ended questions ("what's concerning right now?") never name a specific
 # CVE/technique/actor, so the exact-ID/fuzzy-name matchers above find nothing
 # for them. This keyword gate lets chat.py fall back to a general "what's
@@ -34,11 +48,45 @@ GENERAL_CONCERN_RE = re.compile(
 )
 
 
-def wants_general_overview(text):
+class Ioc(TypedDict):
+    """One extracted indicator of compromise."""
+
+    value: str
+    type: str
+
+
+class ExtractedIds(TypedDict):
+    """Exact-match IDs pulled straight out of text by regex."""
+
+    cves: list[str]
+    techniques: list[str]
+    mitigations: list[str]
+
+
+ActorMatch = tuple[str, str, float]
+SoftwareMatch = tuple[str, str, str, float]
+
+
+class Entities(TypedDict):
+    """Everything recognized in one piece of text: IDs, names, and IOCs."""
+
+    cves: list[str]
+    techniques: list[str]
+    mitigations: list[str]
+    actors: list[ActorMatch]
+    software: list[SoftwareMatch]
+    iocs: list[Ioc]
+    naming_terms: list[str]
+
+
+def wants_general_overview(text: str) -> bool:
+    """Whether text asks a vague "what's bad right now" question."""
     return bool(GENERAL_CONCERN_RE.search(text))
 
 
-def extract_ids(text):
+def extract_ids(text: str) -> ExtractedIds:
+    """Pull exact-match CVE/technique/mitigation IDs out of text."""
+    precondition(len(text) <= MAX_TEXT_LENGTH, "text exceeds MAX_TEXT_LENGTH")
     return {
         "cves": sorted({m.upper() for m in CVE_RE.findall(text)}),
         "techniques": sorted({m.upper() for m in TECHNIQUE_RE.findall(text)}),
@@ -46,15 +94,16 @@ def extract_ids(text):
     }
 
 
-def extract_iocs(text):
+def extract_iocs(text: str) -> list[Ioc]:
     """Returns a de-duplicated list of {value, type} dicts, type in
     'hash'/'ip'/'url'. Order checked longest-pattern-first so a URL isn't
     also partially re-matched by a shorter pattern.
     """
-    iocs = []
-    seen = set()
+    precondition(len(text) <= MAX_TEXT_LENGTH, "text exceeds MAX_TEXT_LENGTH")
+    iocs: list[Ioc] = []
+    seen: set[str] = set()
 
-    def add(value, kind):
+    def add(value: str, kind: str) -> None:
         if value not in seen:
             seen.add(value)
             iocs.append({"value": value, "type": kind})
@@ -72,11 +121,13 @@ def extract_iocs(text):
     return iocs
 
 
-def _word_boundary_match(candidate, text_lower):
+def _word_boundary_match(candidate: str, text_lower: str) -> bool:
     return re.search(rf"\b{re.escape(candidate.lower())}\b", text_lower) is not None
 
 
-def _best_candidate_match(text, candidates):
+def _best_candidate_match(
+    text: str, candidates: dict[str, tuple[object, ...]]
+) -> list[tuple[tuple[object, ...], str, float]]:
     """candidates: dict of display_text -> key. Returns list of (key, display_text, score)."""
     text_lower = text.lower()
     exact_keys = set()
@@ -99,10 +150,10 @@ def _best_candidate_match(text, candidates):
     return results
 
 
-def match_actors(text, db):
+def match_actors(text: str, db: duckdb.DuckDBPyConnection) -> list[ActorMatch]:
     """Match free text against known actor names/aliases. Returns list of (stix_id, name, score)."""
     rows = db.execute("SELECT stix_id, name, aliases FROM actor").fetchall()
-    candidates = {}
+    candidates: dict[str, tuple[object, ...]] = {}
     for stix_id, name, aliases in rows:
         candidates[name] = (stix_id, name)
         for alias in (aliases or "").split(";"):
@@ -112,32 +163,52 @@ def match_actors(text, db):
 
     matched = _best_candidate_match(text, candidates)
     seen = set()
-    results = []
-    for (stix_id, name), _display, score in matched:
+    results: list[ActorMatch] = []
+    for key, _display, score in matched:
+        stix_id, name = key
         if stix_id in seen:
             continue
         seen.add(stix_id)
-        results.append((stix_id, name, score))
+        results.append((stix_id, name, score))  # type: ignore[arg-type]
     return results
 
 
-def match_software(text, db):
-    """Match free text against known software names. Returns list of (software_id, name, type, score)."""
-    rows = db.execute("SELECT DISTINCT software_id, software_name, software_type FROM actor_software").fetchall()
-    candidates = {name: (software_id, name, software_type) for software_id, name, software_type in rows}
+def match_software(text: str, db: duckdb.DuckDBPyConnection) -> list[SoftwareMatch]:
+    """Match free text against known software names.
+
+    Returns a list of (software_id, name, type, score).
+    """
+    rows = db.execute(
+        "SELECT DISTINCT software_id, software_name, software_type FROM actor_software"
+    ).fetchall()
+    candidates: dict[str, tuple[object, ...]] = {
+        name: (software_id, name, software_type) for software_id, name, software_type in rows
+    }
 
     matched = _best_candidate_match(text, candidates)
     seen = set()
-    results = []
-    for (software_id, name, software_type), _display, score in matched:
+    results: list[SoftwareMatch] = []
+    for key, _display, score in matched:
+        software_id, name, software_type = key
         if software_id in seen:
             continue
         seen.add(software_id)
-        results.append((software_id, name, software_type, score))
+        results.append((software_id, name, software_type, score))  # type: ignore[arg-type]
     return results
 
 
-def extract_entities(text, db):
+def match_naming_terms(text: str, db: duckdb.DuckDBPyConnection) -> list[str]:
+    """Whole-word, case-insensitive match against known vendor naming-scheme
+    words (e.g. 'Panda', 'Bear'), for a question that names no specific
+    actor of its own -- e.g. "what does Panda mean".
+    """
+    terms = [row[0] for row in db.execute("SELECT DISTINCT term FROM naming_convention").fetchall()]
+    text_lower = text.lower()
+    return sorted({term for term in terms if _word_boundary_match(term, text_lower)})
+
+
+def extract_entities(text: str, db: duckdb.DuckDBPyConnection) -> Entities:
+    """Run every extractor above and combine the results."""
     ids = extract_ids(text)
     return {
         "cves": ids["cves"],
@@ -146,4 +217,5 @@ def extract_entities(text, db):
         "actors": match_actors(text, db),
         "software": match_software(text, db),
         "iocs": extract_iocs(text),
+        "naming_terms": match_naming_terms(text, db),
     }

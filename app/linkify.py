@@ -1,7 +1,14 @@
+"""Turn verified entity IDs in model answer text into in-app links."""
+
 import html
 import re
+from re import Match
 
-from . import llm
+import duckdb
+
+from contracts import postcondition, precondition
+
+from . import intel, llm
 
 # Only these ID shapes get turned into an in-app link with a right-panel
 # preview. CWE/CAPEC IDs are left as plain text — they're crosswalk plumbing,
@@ -14,8 +21,11 @@ LINKABLE_PATTERNS = [
 ]
 
 
-def resolve_link(entity_id, db):
+def resolve_link(
+    entity_id: str, db: duckdb.DuckDBPyConnection
+) -> tuple[str, str] | None:
     """Map a verified ID to (entity_type, internal_library_url), or None."""
+    precondition(bool(entity_id), "entity_id must not be empty")
     entity_id = entity_id.upper()
     if re.fullmatch(r"CVE-\d{4}-\d{4,7}", entity_id):
         return "cve", f"/library/cves/{entity_id}"
@@ -30,9 +40,11 @@ def resolve_link(entity_id, db):
     return None
 
 
-def linkify(text, facts, db):
+def linkify(
+    text: str, facts: list[intel.Fact], db: duckdb.DuckDBPyConnection
+) -> str:
     """Escape the model's raw answer text, then wrap only IDs that are both
-    (a) already verified against the retrieved facts (llm._allowed_ids — the
+    (a) already verified against the retrieved facts (llm.allowed_ids — the
     same check the hallucination guard uses) and (b) resolvable to a real
     Library page, in a clickable <a class="entity-link"> the frontend
     intercepts to populate the view panel instead of navigating.
@@ -40,7 +52,7 @@ def linkify(text, facts, db):
     allowed = llm.allowed_ids(facts)
     escaped = html.escape(text)
 
-    def replace(match):
+    def replace(match: Match[str]) -> str:
         raw = match.group(0)
         entity_id = raw.upper()
         if entity_id not in allowed:
@@ -56,4 +68,5 @@ def linkify(text, facts, db):
 
     for pattern in LINKABLE_PATTERNS:
         escaped = pattern.sub(replace, escaped)
+    postcondition("<script" not in escaped.lower(), "output must stay HTML-escaped")
     return escaped

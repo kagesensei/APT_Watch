@@ -8,6 +8,15 @@
 <p class="meta">Aliases: {{ actor[3].replace(';', ', ') }}</p>
 {% endif %}
 
+{% if naming_facts %}
+<h2>What the names mean</h2>
+<ul class="pill-list">
+  {% for fact in naming_facts %}
+  <li>{{ fact.text }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
 <h2>Techniques used ({{ techniques|length }})</h2>
 {% if techniques %}
 <ul class="pill-list">

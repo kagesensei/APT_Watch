@@ -100,3 +100,16 @@ class TestMatchActorsAndSoftware:
         assert entities["techniques"] == ["T1055"]
         assert any(a[1] == name for a in entities["actors"])
         assert any(i["type"] == "ip" for i in entities["iocs"])
+
+    def test_match_naming_terms_finds_a_whole_word_match(self, db):
+        assert "Panda" in nlp.match_naming_terms("What does Panda mean?", db)
+
+    def test_match_naming_terms_is_case_insensitive(self, db):
+        assert "Panda" in nlp.match_naming_terms("what does panda mean?", db)
+
+    def test_match_naming_terms_no_match_on_unrelated_text(self, db):
+        assert nlp.match_naming_terms("What's the weather like today?", db) == []
+
+    def test_extract_entities_includes_naming_terms(self, db):
+        entities = nlp.extract_entities("Why is it called Comment Panda?", db)
+        assert "Panda" in entities["naming_terms"]

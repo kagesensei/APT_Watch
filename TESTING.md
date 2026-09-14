@@ -12,7 +12,7 @@ pip install -r requirements.txt   # now includes pytest
 pytest
 ```
 
-119 tests, ~4s, no network and no GPU/model required. They run against the
+150 tests, ~4s, no network and no GPU/model required. They run against the
 real committed `data/cti.duckdb` snapshot (read-only) plus temp/mocked files
 for anything that writes (NVD cache, saved chats) — nothing in `data/` is
 modified. If `data/cti.duckdb` doesn't exist yet, DB-dependent tests skip
@@ -23,10 +23,11 @@ What's covered, by file:
 
 | file | covers |
 |---|---|
-| `tests/test_nlp.py` | CVE/technique/mitigation ID regexes, IOC extraction (hash/IP/URL), actor/software fuzzy matching |
+| `tests/test_contracts.py` | design-by-contract helpers (`precondition`/`postcondition`/`invariant`/`not_none`/`bounded`) — see `POWER10.md` |
+| `tests/test_nlp.py` | CVE/technique/mitigation ID regexes, IOC extraction (hash/IP/URL), actor/software fuzzy matching, naming-convention term matching |
 | `tests/test_linkify.py` | ID→Library-URL resolution, XSS-safe escaping, unverified-ID guard |
 | `tests/test_llm.py` | context-budget tiering/caps, fabricated-ID detection — no model load |
-| `tests/test_intel.py` | every `intel.lookup_*` function against real data, incl. both CVE→CWE→CAPEC→ATT&CK crosswalk dead-end branches and the WannaCry hash → Lazarus Group IOC chain |
+| `tests/test_intel.py` | every `intel.lookup_*` function against real data, incl. both CVE→CWE→CAPEC→ATT&CK crosswalk dead-end branches, the WannaCry hash → Lazarus Group IOC chain, and naming-convention/alias-etymology facts (APT1 → "Comment Panda"/"Comment Crew") |
 | `tests/test_charts.py` | inline-SVG chart builders: escaping, truncation, zero-value/empty-data edge cases |
 | `tests/test_routes_*.py` | Flask routes via `test_client()`: Library pages, Dashboard, Scan upload, `/ask`, saved-chats auth |
 
@@ -35,7 +36,28 @@ Network and the local LLM are mocked throughout (`intel.requests.get`,
 **not** judge answer quality, since that's a model-behavior question, not a
 correctness one. That's what part 2 is for.
 
-## 2. Manual walkthrough
+## 2. Static analysis and security
+
+```bash
+pip install -r requirements-dev.txt
+pylint app ingest resolve contracts.py main.py preflight.py   # style/design, target: 10.00/10
+mypy .                                                          # --strict; target: zero errors
+bandit -c pyproject.toml -r app ingest resolve contracts.py main.py preflight.py   # target: zero issues
+```
+
+These check what pytest can't: unchecked return values, unbounded loops,
+function/argument-count limits, and injection-shaped patterns. All four
+commands above (these three plus `pytest`) run in CI
+(`.github/workflows/ci.yml`) on every push — see `POWER10.md` for the
+reasoning behind each rule and the few narrow, commented exceptions
+(`# nosec B608` on the handful of queries whose WHERE clause shape, never
+its data, is assembled at runtime).
+
+They also run automatically every time `python main.py` starts —
+`preflight.py` runs all four and refuses to start the server if any fail.
+Set `APTWATCH_SKIP_PREFLIGHT=1` to bypass this for fast local iteration.
+
+## 3. Manual walkthrough
 
 Requires the app running (`python main.py`) against a real
 `data/cti.duckdb`. The GGUF model is only needed for step 4.
@@ -49,10 +71,13 @@ Requires the app running (`python main.py`) against a real
 3. Click into an actor detail page — techniques and software lists should be
    populated, and every technique ID should be clickable through to
    `/library/techniques/<id>`.
-4. `/library/cves` — open a CVE detail page. You should see either an
+4. Open APT1's page specifically — a "What the names mean" section should
+   explain that "Panda" denotes suspected China-nexus activity and why the
+   group is called "Comment Crew" (see `data/seed/actor_alias_notes.json`).
+5. `/library/cves` — open a CVE detail page. You should see either an
    ATT&CK-technique crosswalk section, or (for most CVEs) an explicit
    coverage-gap note explaining *why* none was found — never a silent blank.
-5. Visit a nonexistent ID (`/library/actors/does-not-exist`) — should render
+6. Visit a nonexistent ID (`/library/actors/does-not-exist`) — should render
    the custom 404 page, not a stack trace.
 
 ### Dashboard
@@ -88,15 +113,22 @@ Sources panel, and that DERIVED facts are called out as inferred:
    NVD/KEV facts, and either a crosswalk technique or the explicit dead-end
    explanation, matching what that CVE's Library page showed.
 3. `What techniques does APT29 use?` — actor-technique facts.
-4. `What's a concerning CVE being actively exploited right now?` — no entity
+4. `What does Comment Panda mean?` and `Why is APT1 called Comment Crew?` —
+   should answer with the naming-convention meaning ("Panda" = suspected
+   China-nexus) and the etymology note, not "I don't know." Also try a term
+   alone with no actor named, e.g. `What does Bear mean in threat actor
+   names?` — should still answer generically (CrowdStrike/Microsoft/etc.
+   meanings), since `app/nlp.py` matches naming-scheme words independently
+   of any specific actor.
+5. `What's a concerning CVE being actively exploited right now?` — no entity
    named, so this should trigger the general-KEV fallback (`app/nlp.py`
    keyword gate) rather than "no data."
-5. Ask a follow-up with no entity of its own, e.g. `what mitigates this?`
+6. Ask a follow-up with no entity of its own, e.g. `what mitigates this?`
    right after a CVE/technique question — it should resolve against the
    prior turn (rolling `history`), not lose context.
-6. Click any highlighted CVE/technique/mitigation/actor ID in a reply —
+7. Click any highlighted CVE/technique/mitigation/actor ID in a reply —
    the right-hand view panel should populate without a page navigation.
-7. Watch for the "⚠️ Verification warning" banner — it should be rare, but
+8. Watch for the "⚠️ Verification warning" banner — it should be rare, but
    if the model invents an ID not in Sources, it must appear rather than the
    ID silently going unflagged (this is the one behavior worth actively
    trying to provoke: ask something adjacent to a real ID, e.g. a technique
