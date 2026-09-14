@@ -160,6 +160,30 @@ CREATE TABLE actor_alias_note(
     retrieved DATE            -- when source_url was fetched and checked against this row
 );
 
+-- === MISP Galaxy threat-actor cluster (ingest/misp_galaxy.py) ===
+-- A community-maintained actor list, independent of MITRE ATT&CK's own
+-- group list -- used (see resolve/aliases.py) to cross-reference ATT&CK
+-- group names/aliases against a second, differently-curated source rather
+-- than trusting ATT&CK's own alias list alone.
+
+CREATE TABLE misp_actor(
+    misp_uuid VARCHAR,      -- the cluster value's own "uuid" field
+    canonical_name VARCHAR,  -- the cluster value's "value" field
+    description VARCHAR,      -- absent on some entries -> NULL
+    country VARCHAR,           -- meta.country (ISO-ish 2-letter code); absent on most entries -> NULL
+    refs VARCHAR,                -- meta.refs, ';'-joined; absent -> ''
+    source_url VARCHAR,           -- the fetched clusters/threat-actor.json URL
+    retrieved DATE                 -- when it was fetched
+);
+
+CREATE TABLE actor_alias(
+    misp_uuid VARCHAR,   -- misp_actor.misp_uuid
+    alias VARCHAR,         -- the canonical name itself (alias_type='canonical') or one synonym
+    alias_type VARCHAR,     -- 'canonical' | 'synonym'
+    source_url VARCHAR,      -- the fetched clusters/threat-actor.json URL
+    retrieved DATE             -- when it was fetched
+);
+
 -- The CVE -> ATT&CK technique crosswalk used by the chat feature (app/intel.py)
 -- joins across all of the above:
 --
