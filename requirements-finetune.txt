@@ -1,0 +1,19 @@
+# Optional dependencies for finetune/ stages 2-3 (teacher-model synthesis and
+# the QLoRA fine-tune/export), NOT needed to run finetune/generate_sft_examples.py
+# itself (stdlib + this repo's own contracts.py only) and NOT part of the
+# preflight/CI gate. See finetune/README.md for what each stage needs this for.
+#
+# Unlike requirements.txt, this is not yet a frozen `pip install` snapshot --
+# these stages haven't been run in this repo, so versions aren't pinned. Pin
+# them here (matching requirements.txt's convention) once stage 2/3 actually
+# runs successfully against a real environment.
+
+# Stage 2: teacher-model synthesis (see finetune/README.md's claude_teacher example)
+anthropic
+
+# Stage 3: QLoRA fine-tune + GGUF export
+transformers
+peft
+trl
+bitsandbytes
+accelerate

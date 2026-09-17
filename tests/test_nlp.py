@@ -33,6 +33,18 @@ class TestWantsGeneralOverview:
         assert not nlp.wants_general_overview("What mitigates T1055?")
 
 
+class TestWantsPipelineAssessment:
+    def test_matches_assessment_phrasing(self):
+        assert nlp.wants_pipeline_assessment("Give me a full assessment of APT29")
+        assert nlp.wants_pipeline_assessment("Can you profile this campaign?")
+        assert nlp.wants_pipeline_assessment("How should we defend against Lazarus Group?")
+        assert nlp.wants_pipeline_assessment("What do we know about this actor?")
+
+    def test_no_match_on_narrow_factual_question(self):
+        assert not nlp.wants_pipeline_assessment("What mitigates T1055?")
+        assert not nlp.wants_pipeline_assessment("What software does APT29 use?")
+
+
 class TestExtractIocs:
     def test_extracts_url_hash_and_ip(self):
         text = (

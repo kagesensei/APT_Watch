@@ -22,8 +22,9 @@ class TestAsk:
 
         captured = {}
 
-        def fake_answer(question, facts):
+        def fake_answer(question, facts, pipeline=False):
             captured["facts"] = facts
+            captured["pipeline"] = pipeline
             return f"Canned answer citing {technique_id}."
 
         monkeypatch.setattr(chat_module.llm, "answer", fake_answer)
@@ -35,11 +36,16 @@ class TestAsk:
         assert payload["answer"] == f"Canned answer citing {technique_id}."
         assert f'data-id="{technique_id}"' in payload["answer_html"]
         assert captured["facts"], "facts retrieved for the technique should be passed to llm.answer"
+        assert captured["pipeline"] is False
+        assert payload["pipeline"] is False
 
     def test_question_with_no_recognizable_entity_and_no_general_keyword_yields_no_facts(
         self, client, monkeypatch
     ):
-        monkeypatch.setattr(chat_module.llm, "answer", lambda q, facts: "no data" if not facts else "unexpected")
+        monkeypatch.setattr(
+            chat_module.llm, "answer",
+            lambda q, facts, pipeline=False: "no data" if not facts else "unexpected",
+        )
         resp = client.post("/ask", json={"message": "asdkjaslkdj random gibberish"})
         assert resp.status_code == 200
         assert resp.get_json()["answer"] == "no data"
@@ -47,7 +53,7 @@ class TestAsk:
     def test_general_overview_question_falls_back_to_recent_kev(self, client, monkeypatch):
         captured = {}
 
-        def fake_answer(question, facts):
+        def fake_answer(question, facts, pipeline=False):
             captured["facts"] = facts
             return "summary"
 
@@ -58,7 +64,7 @@ class TestAsk:
 
     def test_follow_up_resolves_entity_from_history(self, client, db, monkeypatch):
         cve_id = db.execute("SELECT cve_id FROM kev LIMIT 1").fetchone()[0]
-        monkeypatch.setattr(chat_module.llm, "answer", lambda q, facts: "ok")
+        monkeypatch.setattr(chat_module.llm, "answer", lambda q, facts, pipeline=False: "ok")
         from app import intel
         monkeypatch.setattr(intel, "fetch_nvd", lambda cve_id, cache: None)
 
@@ -74,13 +80,63 @@ class TestAsk:
             "SELECT DISTINCT technique_id FROM technique_mitigation LIMIT 1"
         ).fetchone()[0]
 
-        def raise_not_found(question, facts):
+        def raise_not_found(question, facts, pipeline=False):
             raise FileNotFoundError("No LLM model found at models/fake.gguf")
 
         monkeypatch.setattr(chat_module.llm, "answer", raise_not_found)
         resp = client.post("/ask", json={"message": f"What mitigates {technique_id}?"})
         assert resp.status_code == 500
         assert "No LLM model found" in resp.get_json()["error"]
+
+
+class TestPipelineTrigger:
+    """The structured PIPELINE_SYSTEM_PROMPT only kicks in for an actor
+    question that also reads as an open-ended assessment -- see
+    app/chat.py's _wants_pipeline_assessment and app/nlp.py's
+    ASSESSMENT_INTENT_RE.
+    """
+
+    def _actor_name(self, db):
+        return db.execute("SELECT name FROM actor LIMIT 1").fetchone()[0]
+
+    def test_actor_plus_assessment_phrasing_triggers_pipeline(self, client, db, monkeypatch):
+        actor_name = self._actor_name(db)
+        captured = {}
+
+        def fake_answer(question, facts, pipeline=False):
+            captured["pipeline"] = pipeline
+            return "assessment"
+
+        monkeypatch.setattr(chat_module.llm, "answer", fake_answer)
+        resp = client.post("/ask", json={"message": f"Give me a full assessment of {actor_name}"})
+        assert resp.status_code == 200
+        assert captured["pipeline"] is True
+        assert resp.get_json()["pipeline"] is True
+
+    def test_actor_named_without_assessment_phrasing_stays_narrow(self, client, db, monkeypatch):
+        actor_name = self._actor_name(db)
+        captured = {}
+
+        def fake_answer(question, facts, pipeline=False):
+            captured["pipeline"] = pipeline
+            return "narrow answer"
+
+        monkeypatch.setattr(chat_module.llm, "answer", fake_answer)
+        resp = client.post("/ask", json={"message": f"What software does {actor_name} use?"})
+        assert resp.status_code == 200
+        assert captured["pipeline"] is False
+
+    def test_assessment_phrasing_without_an_actor_stays_narrow(self, client, monkeypatch):
+        captured = {}
+
+        def fake_answer(question, facts, pipeline=False):
+            captured["pipeline"] = pipeline
+            return "no actor named"
+
+        monkeypatch.setattr(chat_module.llm, "answer", fake_answer)
+        resp = client.post("/ask", json={"message": "Give me a full assessment of the situation"})
+        assert resp.status_code == 200
+        assert captured["pipeline"] is False
 
 
 class TestSavedChatsRequireLogin:

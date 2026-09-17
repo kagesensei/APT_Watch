@@ -40,6 +40,43 @@ class TestFabricationGuard:
         reply = "See CVE-2024-3400."
         assert "Verification warning" not in llm._check_for_fabricated_ids(reply, facts)
 
+    def test_guard_still_catches_a_fabricated_id_buried_in_a_structured_pipeline_answer(self):
+        # A PIPELINE_SYSTEM_PROMPT-shaped answer is much longer and has many
+        # headed sections -- the guard must still scan the whole thing, not
+        # just an opening line.
+        facts = [_fact("actor_usage", "G0016", text="APT29 uses T1071.")]
+        pipeline_reply = (
+            "Likely Actor(s)\nAPT29 (G0016), per MITRE ATT&CK.\n\n"
+            "ATT&CK Techniques\nT1071.\n\n"
+            "Unanswered Questions / Gaps\nAlso possibly linked to G9999, unconfirmed."
+        )
+        result = llm._check_for_fabricated_ids(pipeline_reply, facts)
+        assert "Verification warning" in result
+        assert "G9999" in result
+
+
+class TestSystemPromptSelection:
+    def test_pipeline_false_selects_the_concise_prompt(self):
+        assert llm._system_prompt_for(False) == llm.SYSTEM_PROMPT
+
+    def test_pipeline_true_selects_the_structured_prompt(self):
+        assert llm._system_prompt_for(True) == llm.PIPELINE_SYSTEM_PROMPT
+
+    def test_prompts_are_distinct(self):
+        assert llm.SYSTEM_PROMPT != llm.PIPELINE_SYSTEM_PROMPT
+
+    def test_pipeline_prompt_requires_the_same_id_fabrication_rule(self):
+        # The core anti-hallucination rule must survive into the new prompt
+        # verbatim in spirit, even though the wording differs slightly.
+        assert "does not appear verbatim in the facts below" in llm.PIPELINE_SYSTEM_PROMPT
+
+    def test_pipeline_prompt_requires_all_documented_sections(self):
+        for heading in (
+            "Likely Actor", "Observed Behavior", "ATT&CK Techniques", "Supporting Evidence",
+            "Confidence", "IOCs", "Detections", "Mitigations", "Unanswered Questions",
+        ):
+            assert heading in llm.PIPELINE_SYSTEM_PROMPT
+
 
 class TestBuildContext:
     def test_no_facts_returns_explanatory_placeholder(self):

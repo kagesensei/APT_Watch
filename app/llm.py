@@ -29,7 +29,12 @@ def _preload_windows_cuda_deps() -> None:
     if sys.platform != "win32":
         return
 
-    spec = importlib.util.find_spec("llama_cpp")
+    # mypy special-cases a literal `sys.platform` comparison: on the Linux
+    # runner this and CI both run on, it statically treats the check above
+    # as always-true and everything below as dead code. It isn't -- this
+    # runs fine on an actual Windows machine, which is the whole point of
+    # the platform guard above.
+    spec = importlib.util.find_spec("llama_cpp")  # type: ignore[unreachable]
     if not spec or not spec.submodule_search_locations:
         return
     lib_dir = pathlib.Path(spec.submodule_search_locations[0]) / "lib"
@@ -116,6 +121,66 @@ information in the data available — do not guess, and do not use any knowledge
 the facts listed. Address exactly what the user asked first (e.g. if they ask about
 indicators of compromise, lead with any IOC facts before general background), rather
 than opening with unrelated context. Keep your answer concise and actionable."""
+
+# Used for open-ended "assess this actor/campaign" questions instead of
+# SYSTEM_PROMPT above -- see app/chat.py's pipeline-trigger logic (an actor
+# entity resolved AND the question text signals assessment intent, per
+# app/nlp.py's wants_pipeline_assessment()). A narrow factual lookup ("what
+# mitigates T1055?") should stay on the concise SYSTEM_PROMPT above; forcing
+# every actor question through nine headings would bury a one-line answer.
+PIPELINE_SYSTEM_PROMPT = """You are the chat assistant for APT_Watch, a threat-intelligence tool.
+
+The user is asking for a full analyst-style assessment of a threat actor or campaign, not a
+single narrow fact. Answer using ONLY the facts listed below — the same sourcing rules as
+always apply:
+- [DIRECT] — stated outright by MITRE ATT&CK, NVD, or CISA KEV.
+- [DERIVED] — an inferred relationship (a CWE -> CAPEC -> ATT&CK crosswalk, or a name-based
+  correlation between different vendors' reporting on the same activity). Flag every DERIVED
+  fact you use as an inferred correlation, never as a confirmed direct relationship.
+
+Never write a CVE, CWE, CAPEC, technique (T####), mitigation (M####), or group (G####) ID
+that does not appear verbatim in the facts below, even as a guess or example.
+
+Structure your answer under these headings, in this order, using only headings that have
+something to say (omit a heading entirely rather than writing "N/A" or "none found" under
+it — UNLESS the facts explain a specific reason nothing was found, which belongs under
+Unanswered Questions / Gaps, not silently dropped):
+
+Likely Actor(s) — who the facts point to, by name/ID. If different vendors' naming attributes
+the activity to different actor names, say so explicitly rather than picking one arbitrarily —
+an unresolved naming collision is itself the honest answer, not a gap to paper over.
+
+Observed Behavior — what the actor(s) have been documented doing, in plain language.
+
+ATT&CK Techniques — the specific technique IDs involved, each tied to the behavior above.
+
+Supporting Evidence — which facts back each claim, distinguishing DIRECT statements from
+DERIVED correlations.
+
+Confidence — State your confidence (High / Medium / Low) for the actor attribution and for
+any DERIVED claims specifically, not the answer as a whole. Agreement across multiple DIRECT
+facts is High; a single DERIVED correlation, a rejected or ambiguous name match, or facts that
+conflict with each other is Low.
+
+IOCs — any indicators available, marked confirmed vs. name-correlated per the facts.
+
+Detections — any detection or coverage facts available.
+
+Mitigations — MITRE ATT&CK mitigations that address the techniques identified above.
+
+Unanswered Questions / Gaps — what the facts do NOT establish. Always include this section: a
+genuine gap (an unresolved naming collision, a crosswalk dead end, a technique with no
+mitigation on file) is a normal, useful answer, not a failure to hide.
+
+If the facts below do not answer the question at all, say so plainly under Likely Actor(s) and
+skip the remaining headings — do not guess, and do not use any knowledge beyond the facts
+listed."""
+
+
+def _system_prompt_for(pipeline: bool) -> str:
+    """Pick the narrow-lookup or full-assessment system prompt."""
+    return PIPELINE_SYSTEM_PROMPT if pipeline else SYSTEM_PROMPT
+
 
 # Regexes for the ID guardrail below: any of these patterns appearing in the
 # model's answer must also appear somewhere in the facts it was given, or the
@@ -207,13 +272,18 @@ def build_context(facts: list["intel.Fact"]) -> str:
     return "\n".join(f"{i + 1}. {line}" for i, line in enumerate(lines))
 
 
-def answer(question: str, facts: list["intel.Fact"]) -> str:
-    """Ask the local LLM to answer `question` grounded only in `facts`."""
+def answer(question: str, facts: list["intel.Fact"], pipeline: bool = False) -> str:
+    """Ask the local LLM to answer `question` grounded only in `facts`.
+
+    `pipeline=True` selects PIPELINE_SYSTEM_PROMPT's structured, multi-
+    section assessment format instead of the default concise/cited one --
+    see app/chat.py for what decides which questions set this.
+    """
     precondition(bool(question), "question must not be empty")
     llm = get_llm()
     context = build_context(facts)
     messages: list[ChatCompletionRequestMessage] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": _system_prompt_for(pipeline)},
         {"role": "user", "content": f"FACTS:\n{context}\n\nQUESTION: {question}"},
     ]
     result = llm.create_chat_completion(messages=messages, temperature=0.2, max_tokens=900)
