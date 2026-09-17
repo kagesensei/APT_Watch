@@ -56,5 +56,15 @@ module = [
 ]
 ignore_missing_imports = true
 
+# bandit's exclude_dirs does a plain substring match against each scanned
+# file's path, not a directory-boundary-aware one (verified empirically:
+# an unanchored "data" entry silently un-scans any file whose path merely
+# *contains* those letters in order, e.g. a hypothetical app/database.py
+# or app/metadata.py -- neither lives under data/, but "data" is a
+# substring of "database"/"metadata"). Anchoring every entry with a
+# leading and trailing slash forces the match to require an actual path
+# boundary on both sides, so only the real top-level directories are
+# excluded. The bare-name form also wouldn't exclude a same-named file
+# (e.g. a hypothetical top-level data.py) -- and neither should it.
 [tool.bandit]
-exclude_dirs = ["tests", ".venv", "venv", "data"]
+exclude_dirs = ["/tests/", "/.venv/", "/venv/", "/data/"]

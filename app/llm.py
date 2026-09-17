@@ -29,7 +29,12 @@ def _preload_windows_cuda_deps() -> None:
     if sys.platform != "win32":
         return
 
-    spec = importlib.util.find_spec("llama_cpp")
+    # mypy special-cases a literal `sys.platform` comparison: on the Linux
+    # runner this and CI both run on, it statically treats the check above
+    # as always-true and everything below as dead code. It isn't -- this
+    # runs fine on an actual Windows machine, which is the whole point of
+    # the platform guard above.
+    spec = importlib.util.find_spec("llama_cpp")  # type: ignore[unreachable]
     if not spec or not spec.submodule_search_locations:
         return
     lib_dir = pathlib.Path(spec.submodule_search_locations[0]) / "lib"
