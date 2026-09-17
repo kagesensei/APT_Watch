@@ -90,6 +90,15 @@ def _general_overview_facts(
     return recent + crosswalk
 
 
+def _wants_pipeline_assessment(message: str, entities: nlp.Entities) -> bool:
+    """Whether to use llm.py's structured PIPELINE_SYSTEM_PROMPT instead of
+    the default concise one. Requires BOTH a resolved actor entity AND
+    assessment-intent phrasing -- an actor named in an otherwise narrow
+    question ("what mitigates T1055 for APT29?") should stay concise.
+    """
+    return bool(entities["actors"]) and nlp.wants_pipeline_assessment(message)
+
+
 @bp.route("/ask", methods=["POST"])
 def ask() -> tuple[Response, int] | Response:
     """Answer a chat question: extract entities, gather grounding facts,
@@ -109,8 +118,9 @@ def ask() -> tuple[Response, int] | Response:
     if not facts:
         facts = _general_overview_facts(message, db, cache_db)
 
+    pipeline = _wants_pipeline_assessment(message, entities)
     try:
-        reply = llm.answer(message, facts)
+        reply = llm.answer(message, facts, pipeline=pipeline)
     except FileNotFoundError as e:
         return jsonify({"error": str(e)}), 500
 
@@ -118,6 +128,7 @@ def ask() -> tuple[Response, int] | Response:
         "answer": reply,
         "answer_html": linkify.linkify(reply, facts, db),
         "sources": intel.dedup_sources(facts),
+        "pipeline": pipeline,
         "entities": {
             "cves": entities["cves"],
             "techniques": entities["techniques"],

@@ -47,6 +47,19 @@ GENERAL_CONCERN_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A question naming a specific actor ("what mitigates T1055 for APT29?") is
+# still a narrow lookup unless the phrasing itself asks for a full
+# assessment rather than one fact -- app/chat.py only escalates to
+# app/llm.py's PIPELINE_SYSTEM_PROMPT when an actor was resolved AND this
+# gate also matches, so a plain "what software does APT29 use?" stays on
+# the concise prompt.
+ASSESSMENT_INTENT_RE = re.compile(
+    r"\b(assess|assessment|profile|campaign|brief|briefing|overview|"
+    r"landscape|everything|full picture|should (?:we|i) (?:be )?worr|"
+    r"how (?:should|do) we defend|what do we know)\b",
+    re.IGNORECASE,
+)
+
 
 class Ioc(TypedDict):
     """One extracted indicator of compromise."""
@@ -82,6 +95,14 @@ class Entities(TypedDict):
 def wants_general_overview(text: str) -> bool:
     """Whether text asks a vague "what's bad right now" question."""
     return bool(GENERAL_CONCERN_RE.search(text))
+
+
+def wants_pipeline_assessment(text: str) -> bool:
+    """Whether text asks for a full actor/campaign assessment rather than
+    one narrow fact. Only meaningful combined with an actor entity actually
+    being resolved -- see app/chat.py.
+    """
+    return bool(ASSESSMENT_INTENT_RE.search(text))
 
 
 def extract_ids(text: str) -> ExtractedIds:

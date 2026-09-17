@@ -79,6 +79,122 @@ class TestDeterministicAnswer:
         assert sft.deterministic_answer([], "technique_lookup") is None
 
 
+class TestPromptAndRubricFor:
+    def test_pipeline_scenario_gets_the_structured_pair(self):
+        prompt, rubric = sft.prompt_and_rubric_for("full_pipeline_assessment")
+        assert prompt == sft.PIPELINE_SYSTEM_PROMPT
+        assert rubric == sft.PIPELINE_RUBRIC
+
+    def test_narrow_scenario_gets_the_concise_pair(self):
+        prompt, rubric = sft.prompt_and_rubric_for("technique_lookup")
+        assert prompt == sft.SYSTEM_PROMPT
+        assert rubric == sft.STRICT_RUBRIC
+
+    def test_pipeline_scenario_tags_are_exactly_the_documented_set(self):
+        # Pins the deliberately narrow scope: only the full-pipeline
+        # scenario should get the heavier structured format, matching
+        # app/chat.py's own conservative trigger.
+        assert sft.PIPELINE_SCENARIO_TAGS == {"full_pipeline_assessment"}
+
+
+class TestBuildExamplePromptSelection:
+    """build_example() must put the SAME prompt into the training message
+    that synthesize_answer() used to ask the teacher for it -- a mismatch
+    here would silently train the model on a prompt it never actually saw
+    when the assistant text was generated.
+    """
+
+    def _fake_teacher(self, system_prompt, rubric, user_content):
+        del rubric, user_content
+        return f"answer for [{system_prompt[:20]}]"
+
+    def test_pipeline_scenario_uses_the_structured_prompt_in_the_message(self, monkeypatch):
+        monkeypatch.setattr(sft, "SCENARIOS", [sft.scenario_full_pipeline_assessment])
+        example = sft.build_example(random.Random(1), teacher_fn=self._fake_teacher)
+        assert example.messages[0]["content"] == sft.PIPELINE_SYSTEM_PROMPT
+        assert example.meta["pipeline"] is True
+
+    def test_narrow_scenario_uses_the_concise_prompt_in_the_message(self, monkeypatch):
+        monkeypatch.setattr(sft, "SCENARIOS", [sft.scenario_technique_lookup])
+        example = sft.build_example(random.Random(1), teacher_fn=self._fake_teacher)
+        assert example.messages[0]["content"] == sft.SYSTEM_PROMPT
+        assert example.meta["pipeline"] is False
+
+
+class TestConflictingEvidenceScenarios:
+    """These scenarios are grounded in this repo's own real cross-vendor
+    naming-collision data (data/reports/alias_resolution.md), not invented
+    -- see LAZARUS_ATTACK_GROUPS / REJECTED_* below.
+    """
+
+    def test_lazarus_collision_data_matches_the_real_report(self):
+        # Pins the sourced data so a future edit can't silently drift from
+        # what data/reports/alias_resolution.md actually documents.
+        assert len(sft.LAZARUS_ATTACK_GROUPS) == 5
+        assert ("G0032", "Lazarus Group") in sft.LAZARUS_ATTACK_GROUPS
+        assert ("G0082", "APT38") in sft.LAZARUS_ATTACK_GROUPS
+        assert ("G1049", "AppleJeus") in sft.LAZARUS_ATTACK_GROUPS
+        assert ("G0138", "Andariel") in sft.LAZARUS_ATTACK_GROUPS
+        assert ("G1036", "Moonstone Sleet") in sft.LAZARUS_ATTACK_GROUPS
+
+    def test_rejected_collision_data_matches_the_real_report(self):
+        assert sft.REJECTED_ATTACK_ID == "G0114"
+        assert sft.REJECTED_ATTACK_NAME == "Chimera"
+        assert sft.REJECTED_MISP_NAME == "WET PANDA"
+
+    def test_conflicting_attribution_names_the_ambiguity_not_one_answer(self):
+        question, facts, tag = sft.scenario_conflicting_attribution(random.Random(1))
+        assert tag == "conflicting_attribution"
+        assert question
+        naming_facts = [f for f in facts if f.category == "naming_note"]
+        assert len(naming_facts) == 1
+        # All five ATT&CK groups from the real collision must be
+        # discoverable in the fact text somewhere (as the "chosen" group
+        # or among "other_groups"), never silently dropped.
+        mentioned = " ".join(f.text for f in facts)
+        for group_id, _name in sft.LAZARUS_ATTACK_GROUPS:
+            assert group_id in mentioned
+
+    def test_naming_collision_rejected_states_the_rejection(self):
+        question, facts, tag = sft.scenario_naming_collision_rejected(random.Random(1))
+        assert tag == "naming_collision_rejected"
+        assert len(facts) == 1
+        assert "REJECTED" in facts[0].text
+        assert sft.REJECTED_ATTACK_NAME in question
+        assert sft.REJECTED_MISP_NAME in question
+
+    def test_conflicting_iocs_share_family_but_differ_in_indicator(self):
+        question, facts, tag = sft.scenario_conflicting_iocs(random.Random(1))
+        assert tag == "conflicting_iocs"
+        assert question
+        assert len(facts) == 2
+        confirmed = next(f for f in facts if f.category == "ioc" and not f.derived)
+        overlap = next(f for f in facts if f.derived)
+        # The overlap fact must mention both feeds' indicators (a hash and
+        # a URL, necessarily distinct strings) and the shared family name
+        # tying them together -- that's the "imperfect correlation" this
+        # scenario exists to teach the model to describe honestly.
+        assert sft.SYNTHETIC_HASH in overlap.text
+        assert confirmed.text != overlap.text
+        shared_family_words = set(confirmed.text.split()) & set(overlap.text.split())
+        assert shared_family_words
+
+    def test_full_pipeline_assessment_spans_many_categories(self):
+        question, facts, tag = sft.scenario_full_pipeline_assessment(random.Random(1))
+        assert tag == "full_pipeline_assessment"
+        assert question
+        categories = {f.category for f in facts}
+        assert {"actor_usage", "naming_note", "mitigation", "ioc"} <= categories
+        assert len(facts) == 8
+
+    def test_full_pipeline_assessment_cites_atlas_sparta_and_campaign(self):
+        _question, facts, _tag = sft.scenario_full_pipeline_assessment(random.Random(1))
+        mentioned = " ".join(f.text for f in facts)
+        assert any(atlas_id in mentioned for atlas_id, _name in sft.ATLAS_TECHNIQUES)
+        assert any(sparta_id in mentioned for sparta_id, _name in sft.SPARTA_TECHNIQUES)
+        assert any(campaign_id in mentioned for campaign_id, _name in sft.CAMPAIGNS)
+
+
 class TestSynthesizeAnswer:
     def test_deterministic_scenario_ignores_missing_teacher_fn(self):
         answer = sft.synthesize_answer("q", [], "zero_facts", teacher_fn=None)
