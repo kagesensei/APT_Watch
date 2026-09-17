@@ -20,13 +20,13 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: pylint (Power of 10 rule 10 - static analysis, zero warnings)
-        run: pylint app ingest resolve contracts.py main.py preflight.py
+        run: pylint app ingest resolve finetune contracts.py main.py preflight.py
 
       - name: mypy --strict (Power of 10 rule 7 - checked return values/params)
         run: mypy .
 
       - name: bandit (Power of 10 rule 10 - security static analysis)
-        run: bandit -c pyproject.toml -r app ingest resolve contracts.py main.py preflight.py
+        run: bandit -c pyproject.toml -r app ingest resolve finetune contracts.py main.py preflight.py
 
       - name: pytest
         run: pytest

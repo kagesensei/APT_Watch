@@ -8,13 +8,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "cti.duckdb"
 FIXTURES_DIR = pathlib.Path(__file__).resolve().parent / "fixtures"
 
-# ingest/*.py and resolve/aliases.py are run directly, not imported as a
-# package (neither directory has an __init__.py) -- they add these same two
-# paths to sys.path themselves at the top of each file, for the same reason:
-# so `import common` / `from contracts import ...` resolve when run as
-# `python ingest/whatever.py`. Tests importing those modules need the same
-# fix, done once here rather than repeated in every test file.
-for _extra_path in (ROOT, ROOT / "ingest", ROOT / "resolve"):
+# ingest/*.py, resolve/aliases.py, and finetune/generate_sft_examples.py are all
+# run directly, not imported as a package (none of the three directories has
+# an __init__.py) -- they add these same paths to sys.path themselves at the
+# top of each file, for the same reason: so `import common` / `from
+# contracts import ...` resolve when run as `python ingest/whatever.py`.
+# Tests importing those modules need the same fix, done once here rather
+# than repeated in every test file.
+for _extra_path in (ROOT, ROOT / "ingest", ROOT / "resolve", ROOT / "finetune"):
     if str(_extra_path) not in sys.path:
         sys.path.insert(0, str(_extra_path))
 

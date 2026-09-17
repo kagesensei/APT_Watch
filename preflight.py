@@ -38,7 +38,7 @@ CHECKS: list[tuple[str, list[str]]] = [
         "pylint",
         [
             sys.executable, "-m", "pylint",
-            "app", "ingest", "resolve", "contracts.py", "main.py", "preflight.py",
+            "app", "ingest", "resolve", "finetune", "contracts.py", "main.py", "preflight.py",
         ],
     ),
     ("mypy", [sys.executable, "-m", "mypy", "."]),
@@ -46,7 +46,7 @@ CHECKS: list[tuple[str, list[str]]] = [
         "bandit",
         [
             sys.executable, "-m", "bandit", "-c", "pyproject.toml", "-r",
-            "app", "ingest", "resolve", "contracts.py", "main.py", "preflight.py",
+            "app", "ingest", "resolve", "finetune", "contracts.py", "main.py", "preflight.py",
         ],
     ),
     ("pytest", [sys.executable, "-m", "pytest", "-q"]),

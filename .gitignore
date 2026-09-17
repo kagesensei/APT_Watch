@@ -9,3 +9,4 @@ data/nvd_cache.duckdb
 data/chats/
 models/
 .env
+finetune/sft_examples.jsonl
