@@ -10,3 +10,10 @@ data/chats/
 models/
 .env
 finetune/sft_examples.jsonl
+
+# Local reference material
+/enterprise_ai_security_roadmap_ciso.pdf
+
+# Local app server output
+/data/app.stdout.log
+/data/app.stderr.log

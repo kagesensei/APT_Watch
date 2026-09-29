@@ -47,6 +47,48 @@ GENERAL_CONCERN_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Only explicit references inherit conversation entities. A new question
+# without an ID is not necessarily a follow-up about the previous ID.
+FOLLOW_UP_RE = re.compile(
+    r"\b(it|its|they|them|their|those|these|this|that|same)\b",
+    re.IGNORECASE,
+)
+ACTOR_OVERVIEW_RE = re.compile(r"\b(apt|apts|groups|actors)\b", re.IGNORECASE)
+COUNTRY_PATTERNS = (
+    (r"\b(china|chinese)\b", "CN"),
+    (r"\b(russia|russian)\b", "RU"),
+    (r"\b(iran|iranian)\b", "IR"),
+    (r"\bnorth korea[n]?\b", "KP"),
+)
+
+
+def referenced_history(message: str, history: list[object]) -> list[str]:
+    """Select the nearest topic, following only explicitly referential turns."""
+    if not FOLLOW_UP_RE.search(message):
+        return []
+    prior = [item for item in history[-4:] if isinstance(item, str)]
+    if prior and prior[-1] == message:
+        prior.pop()  # Older browser clients include the current message.
+    selected = []
+    for item in reversed(prior[-3:]):
+        selected.append(item)
+        if not FOLLOW_UP_RE.search(item):
+            break
+    return selected
+
+
+def actor_country(text: str) -> str | None:
+    """Resolve supported country wording to a MISP country filter."""
+    for pattern, country in COUNTRY_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return country
+    return None
+
+
+def wants_actor_overview(text: str) -> bool:
+    """Distinguish broad actor questions from vulnerability overviews."""
+    return bool(ACTOR_OVERVIEW_RE.search(text))
+
 # A question naming a specific actor ("what mitigates T1055 for APT29?") is
 # still a narrow lookup unless the phrasing itself asks for a full
 # assessment rather than one fact -- app/chat.py only escalates to

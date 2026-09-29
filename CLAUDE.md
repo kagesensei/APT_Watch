@@ -89,6 +89,20 @@ and merged:
 
 **Not started yet:**
 
+- Core product direction: up-to-date, cross-source APT intelligence; full and
+  partial actor relationships; evidence-backed CVE/zero-day investigations;
+  TTP-to-mitigation/detection mapping; and enterprise-specific defensive
+  prioritization through chat and data-science workflows. Continuous live
+  activity feeds are not inherently required. See the
+  [core threat-intelligence to-do](THREAT_INTELLIGENCE_ROADMAP.md).
+- Security hardening across the app, endpoints, notebooks, and agents:
+  federated sign-in, OAuth/OIDC, PKI/mTLS, zero-trust access, encryption at
+  rest and in transit, and feasible FIPS 203/204/205 PQC adoption.
+  See [the security to-do](SECURITY_ROADMAP.md).
+- An extensible analyst workspace under `notebooks/` using JupyterHub,
+  JupyterLab, and Jupyter AI: AI-assisted feature and agent development,
+  data gathering and reporting, optional sharing/collaboration, and users'
+  own choice of AI provider/account. See [the workspace to-do](notebooks/README.md).
 - An activity feed (recent ingest runs / data changes, surfaced somewhere
   in the app).
 - Actor similarity (e.g. technique/software overlap scoring between

@@ -207,6 +207,17 @@ keyword gate in `app/nlp.py`) fall back to the most notable current entries in
 the CISA KEV catalog (`intel.lookup_recent_kev`) so the chat has something
 concrete to reason about instead of always saying "no data."
 
+New questions do not inherit IDs from unrelated earlier messages. Explicit
+references such as "what mitigates it?" use the nearest prior topic. Broad
+actor questions have a separate overview lookup: supported country wording
+(Chinese, Russian, Iranian, North Korean) filters MISP country attribution,
+restricted to entries in the local ATT&CK name crosswalk. Examples are
+alphabetical and the crosswalk is partial; neither measures current activity.
+Vulnerability overviews provide KEV patch-triage candidates with snapshot
+limitations, not a live or universal "most critical" ranking.
+These overview summaries render directly from retrieved records so dates and
+ranking limitations remain exact. Detailed entity questions still use the LLM.
+
 Pipeline for each question (see `app/nlp.py`, `app/intel.py`, `app/llm.py`,
 `app/chat.py`):
 

@@ -231,14 +231,13 @@
   // --- Ask ---
 
   function ask(message) {
+    const history = messages.filter(function (m) { return m.role === "user"; }).map(function (m) { return m.content; });
     removeSuggestions();
     appendBubble("user", message);
     messages.push({ role: "user", content: message });
     input.value = "";
     input.disabled = true;
     const pending = appendBubble("assistant", "Thinking...");
-
-    const history = messages.filter(function (m) { return m.role === "user"; }).map(function (m) { return m.content; });
 
     fetch("/ask", {
       method: "POST",

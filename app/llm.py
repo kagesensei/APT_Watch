@@ -34,7 +34,8 @@ def _preload_windows_cuda_deps() -> None:
     # as always-true and everything below as dead code. It isn't -- this
     # runs fine on an actual Windows machine, which is the whole point of
     # the platform guard above.
-    spec = importlib.util.find_spec("llama_cpp")  # type: ignore[unreachable]
+    # The unreachable suppression is intentionally unused on Windows.
+    spec = importlib.util.find_spec("llama_cpp")  # type: ignore[unreachable, unused-ignore]
     if not spec or not spec.submodule_search_locations:
         return
     lib_dir = pathlib.Path(spec.submodule_search_locations[0]) / "lib"

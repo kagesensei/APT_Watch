@@ -51,16 +51,12 @@ class TestAsk:
         assert resp.get_json()["answer"] == "no data"
 
     def test_general_overview_question_falls_back_to_recent_kev(self, client, monkeypatch):
-        captured = {}
-
-        def fake_answer(question, facts, pipeline=False):
-            captured["facts"] = facts
-            return "summary"
-
-        monkeypatch.setattr(chat_module.llm, "answer", fake_answer)
+        monkeypatch.setattr(chat_module.llm, "answer", lambda *args: "unexpected model call")
         resp = client.post("/ask", json={"message": "What's concerning right now?"})
         assert resp.status_code == 200
-        assert captured["facts"], "general-overview questions should fall back to lookup_recent_kev"
+        payload = resp.get_json()
+        assert "local snapshot" in payload["answer"]
+        assert any(s["dataset"] == "CISA KEV" for s in payload["sources"])
 
     def test_follow_up_resolves_entity_from_history(self, client, db, monkeypatch):
         cve_id = db.execute("SELECT cve_id FROM kev LIMIT 1").fetchone()[0]
@@ -87,6 +83,52 @@ class TestAsk:
         resp = client.post("/ask", json={"message": f"What mitigates {technique_id}?"})
         assert resp.status_code == 500
         assert "No LLM model found" in resp.get_json()["error"]
+
+    def test_topic_changes_do_not_reuse_technique_facts(self, client, monkeypatch):
+        """Replay the reported browser conversation, including legacy history shape."""
+        captured = []
+
+        def fake_answer(question, facts, pipeline=False):
+            captured.append(facts)
+            return "ok"
+
+        monkeypatch.setattr(chat_module.llm, "answer", fake_answer)
+        monkeypatch.setattr(chat_module.intel, "fetch_nvd", lambda *args: None)
+        history = []
+        responses = []
+        for question in (
+            "What mitigates T1055?",
+            "Which Chinese APT groups are most active right now?",
+            "What is the most critical CVE right now?",
+        ):
+            history.append(question)
+            payload = client.post("/ask", json={
+                "message": question, "history": history,
+            }).get_json()
+            responses.append(payload)
+        assert any("T1055" in f["text"] for f in captured[0])
+        assert any(s["dataset"] == "MISP Galaxy" for s in responses[1]["sources"])
+        assert "T1055" not in responses[1]["answer"]
+        assert any(s["dataset"] == "CISA KEV" for s in responses[2]["sources"])
+        assert "local snapshot" in responses[2]["answer"]
+        assert "CVE-" in responses[2]["answer"]
+        assert payload["entities"]["techniques"] == []
+
+    def test_follow_up_does_not_jump_over_unresolved_new_topic(self, client, monkeypatch):
+        monkeypatch.setattr(chat_module.llm, "answer", lambda *args, **kwargs: "ok")
+        payload = client.post("/ask", json={
+            "message": "What mitigates those?",
+            "history": ["Tell me about T1055", "Tell me about unknown vulnerabilities"],
+        }).get_json()
+        assert payload["entities"]["techniques"] == []
+
+    def test_follow_up_uses_nearest_explicit_topic(self, client, monkeypatch):
+        monkeypatch.setattr(chat_module.llm, "answer", lambda *args, **kwargs: "ok")
+        payload = client.post("/ask", json={
+            "message": "What mitigates it?",
+            "history": ["Tell me about T1055", "Tell me about T1003"],
+        }).get_json()
+        assert payload["entities"]["techniques"] == ["T1003"]
 
 
 class TestPipelineTrigger:

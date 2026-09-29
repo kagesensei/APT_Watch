@@ -7,7 +7,7 @@ from flask import Blueprint, Response, abort, jsonify, render_template, request
 
 from contracts import not_none, precondition
 
-from . import chats_store, intel, linkify, llm, nlp
+from . import chats_store, intel, linkify, llm, nlp, overview
 from .auth import current_user, login_required
 from .cache import get_cache_db
 from .db import get_db
@@ -40,7 +40,10 @@ def _resolve_entities(
     if _has_any_entity(entities) or not history:
         return entities
 
-    contextual_text = " ".join(str(h) for h in history[-3:]) + " " + message
+    prior = nlp.referenced_history(message, history)
+    if not prior:
+        return entities
+    contextual_text = " ".join(prior) + " " + message
     contextual_entities = nlp.extract_entities(contextual_text, db)
     return contextual_entities if _has_any_entity(contextual_entities) else entities
 
@@ -74,20 +77,15 @@ def _facts_for_entities(
 
 
 def _general_overview_facts(
-    message: str, db: duckdb.DuckDBPyConnection, cache_db: duckdb.DuckDBPyConnection
+    message: str, db: duckdb.DuckDBPyConnection
 ) -> list[intel.Fact]:
-    """Fallback for an open-ended question naming no specific entity (e.g.
-    "what's concerning right now?"): the most notable current KEV entries,
-    plus the top one's own crosswalk, instead of always answering "no data".
-    """
+    """Retrieve actor examples or a KEV shortlist with explicit coverage limits."""
+    if nlp.wants_actor_overview(message):
+        return overview.actor_facts(message, db)
     if not nlp.wants_general_overview(message):
         return []
-    recent, _sources = intel.lookup_recent_kev(db)
-    if not recent:
-        return recent
-    top_cve = recent[0]["source"]["id"]
-    crosswalk, _sources = intel.lookup_cve(top_cve, db, cache_db)
-    return recent + crosswalk
+    recent, _sources = intel.lookup_recent_kev(db, limit=3)
+    return [overview.kev_scope(db)] + recent
 
 
 def _wants_pipeline_assessment(message: str, entities: nlp.Entities) -> bool:
@@ -116,11 +114,13 @@ def ask() -> tuple[Response, int] | Response:
 
     facts = _facts_for_entities(entities, db, cache_db)
     if not facts:
-        facts = _general_overview_facts(message, db, cache_db)
+        facts = _general_overview_facts(message, db)
 
     pipeline = _wants_pipeline_assessment(message, entities)
     try:
-        reply = llm.answer(message, facts, pipeline=pipeline)
+        reply = overview.render_answer(facts)
+        if reply is None:
+            reply = llm.answer(message, facts, pipeline=pipeline)
     except FileNotFoundError as e:
         return jsonify({"error": str(e)}), 500
 
