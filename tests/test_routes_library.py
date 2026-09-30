@@ -19,6 +19,10 @@ class TestActors:
         stix_id = db.execute("SELECT stix_id FROM actor LIMIT 1").fetchone()[0]
         resp = client.get(f"/library/actors/{stix_id}")
         assert resp.status_code == 200
+        assert b"Cross-vendor name evidence" in resp.data
+        assert b"lexical similarity is not attribution evidence" in resp.data.lower()
+        assert b"Sigma rule-author tag coverage" in resp.data
+        assert b"not MITRE-confirmed detection coverage" in resp.data
 
     def test_detail_page_404_for_unknown_actor(self, client):
         resp = client.get("/library/actors/intrusion-set--does-not-exist")
@@ -33,6 +37,8 @@ class TestTechniques:
         technique_id = db.execute("SELECT technique_id FROM actor_technique LIMIT 1").fetchone()[0]
         resp = client.get(f"/library/techniques/{technique_id}")
         assert resp.status_code == 200
+        assert b"Sigma rule-author tag coverage" in resp.data
+        assert b"does not prove a rule detects activity" in resp.data
 
     def test_detail_page_404_for_unknown_technique(self, client):
         assert client.get("/library/techniques/T9999").status_code == 404

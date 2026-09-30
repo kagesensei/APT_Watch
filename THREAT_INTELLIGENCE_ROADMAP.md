@@ -10,6 +10,11 @@ a reported vulnerability or campaign means for their own enterprise.
 
 ## Planned capabilities
 
+See the [source catalogue and update plan](THREAT_INTELLIGENCE_SOURCES.md) for
+the initial connector order, source-access distinctions, and proposed polling
+cadences. Source terms must be reviewed individually; academic/personal intent
+does not grant rights to third-party data.
+
 - [ ] Keep intelligence up to date through scheduled refreshes and on-demand
   updates suited to each source. Track publication dates, observation periods,
   retrieval dates, source revisions, and failed refreshes; expose freshness

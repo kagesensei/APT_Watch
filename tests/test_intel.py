@@ -245,7 +245,28 @@ class TestLookupActor:
         facts, sources = intel.lookup_actor(stix_id, db)
         assert facts
         assert all(f["derived"] is False for f in facts)
-        assert {f["category"] for f in facts} <= {"actor_usage", "naming_note"}
+        assert {f["category"] for f in facts} <= {
+            "actor_usage", "naming_note", "actor_identity", "detection", "mitigation",
+        }
+        assert any(f["category"] == "actor_identity" for f in facts)
+        assert any(
+            f["category"] == "detection"
+            and "rules in the index lack ATT&CK technique tags" in f["text"]
+            for f in facts
+        )
+        assert all(
+            "not attribution evidence" in f["text"]
+            for f in facts if f.get("evidence_kind") == "LEXICAL SIMILARITY"
+        )
+
+    def test_bounded_assessment_contains_explicit_gaps(self, db):
+        stix_id = db.execute("SELECT stix_id FROM actor LIMIT 1").fetchone()[0]
+        from app import actor_assessment
+
+        facts, _sources = actor_assessment.lookup(stix_id, db, limit=32)
+        assert len(facts) <= 32
+        assert any(f.get("evidence_kind") == "GAP" for f in facts)
+        assert all(f["text"] for f in facts)
 
     def test_unknown_actor_returns_empty_lists(self, db):
         assert intel.lookup_actor("intrusion-set--nonexistent", db) == ([], [])

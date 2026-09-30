@@ -5,6 +5,14 @@
 <h1>{{ technique_name }}</h1>
 <p class="meta">ATT&amp;CK ID: <strong>{{ technique_id }}</strong></p>
 
+<h2>Sigma rule-author tag coverage</h2>
+<p>Rules are shown when their authors tag this technique. This is not MITRE-confirmed detection coverage and does not prove a rule detects activity in a particular environment. No ingested rule is not proof that no detection exists. {{ sigma_coverage.untagged_rule_count }} ingested rule(s) lack ATT&amp;CK technique tags.</p>
+{% if sigma_coverage.rules %}
+<ul>{% for rule in sigma_coverage.rules %}<li><a href="{{ rule.source_url }}" rel="noopener noreferrer">{{ rule.rule_id }} — {{ rule.title }}</a> ({{ rule.level }}; retrieved {{ rule.retrieved }})</li>{% endfor %}</ul>
+{% else %}
+<p class="empty">No ingested Sigma rule is tagged by its author for this technique. This is an intelligence gap, not proof that no detection exists.</p>
+{% endif %}
+
 <h2>Used by actors ({{ actors|length }})</h2>
 {% if actors %}
 <ul class="pill-list">

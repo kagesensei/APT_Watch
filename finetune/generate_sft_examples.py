@@ -10,11 +10,9 @@ correctly-cited, appropriately-hedged analyst answer that never mentions an
 ID absent from the facts, and that surfaces a "why this couldn't be
 answered" fact when one is present rather than just saying "I don't know."
 
-That's why every fact template, category name, and the system prompt itself
-below are copied verbatim (or near-verbatim) from this repo's own
-app/intel.py and app/llm.py: a fine-tune is only a safe drop-in replacement
-for APTWATCH_MODEL_PATH if it was trained on the exact prompt shape the app
-actually sends at inference time. See finetune/README.md for the full
+Fact templates and category names follow app/intel.py. The runtime and this
+generator import their system prompts and rubrics from app/prompts.py, so the
+training prompt shape cannot drift from inference. See finetune/README.md for the full
 pipeline this script is step one of, and for the planned model name
 (apt-watch-8B-instruct-abliterated-claudetuned).
 
@@ -78,138 +76,14 @@ if str(_ROOT) not in sys.path:
 
 from contracts import precondition  # noqa: E402  pylint: disable=wrong-import-position
 
-# --- Copied from app/llm.py (must match exactly for the fine-tune to be a
-# valid drop-in for APTWATCH_MODEL_PATH). Deliberately duplicated rather
-# than imported: importing app.llm would pull in llama_cpp_python (its
-# module-level `from llama_cpp import Llama`) just to read a string
-# constant, coupling this standalone, stdlib-only script to the app's
-# heaviest runtime dependency. -------------------------------------------
-# pylint: disable=duplicate-code
-
-SYSTEM_PROMPT = """You are the chat assistant for APT_Watch, a threat-intelligence tool.
-
-Answer the user's question using ONLY the facts listed below. Each fact is tagged:
-- [DIRECT] — stated outright by MITRE ATT&CK, NVD, or CISA KEV.
-- [DERIVED] — an inferred relationship reached via a CWE -> CAPEC -> ATT&CK crosswalk.
-  This is NOT a fact any single source states directly; it is a correlation this tool
-  computed. When you use a DERIVED fact, tell the user explicitly that it's an inferred
-  correlation, not a confirmed direct relationship.
-
-Never write a CVE, CWE, CAPEC, technique (T####), mitigation (M####), or group (G####) ID
-that does not appear verbatim in the facts below, even as a guess or example — an invented
-ID that looks plausible is worse than saying you don't know one.
-
-Some facts explain WHY a piece of information isn't available (e.g. "this CVE's weakness
-maps to N CAPEC patterns, but none of them have an ATT&CK technique mapping"). If such a
-fact is present, you MUST include that specific explanation in your answer — never just
-say "I don't have that information" when a fact already explains the actual reason why.
-
-If the facts below do not answer the question, say plainly that you don't have that
-information in the data available — do not guess, and do not use any knowledge beyond
-the facts listed. Address exactly what the user asked first (e.g. if they ask about
-indicators of compromise, lead with any IOC facts before general background), rather
-than opening with unrelated context. Keep your answer concise and actionable."""
-
-CATEGORY_PRIORITY = [
-    "naming_note", "vuln_info", "mitigation", "ioc", "actor_usage", "crosswalk_detail",
-]
-
-# --- A rubric for the teacher-model synthesis step (see synthesize_answer) -
-
-STRICT_RUBRIC = """You are generating a TRAINING EXAMPLE, not a live chat reply. Given a
-QUESTION and a numbered FACTS list (each already tagged [DIRECT] or [DERIVED]), write the
-answer an ideal APT_Watch analyst assistant would give, obeying every rule in
-SYSTEM_PROMPT verbatim (it will be included above this message). Additional rules
-specific to generating training data:
-
-- Use every fact that is relevant to the question; ignore facts that are not.
-- If two or more facts are relevant, synthesize them into connected prose -- do not just
-  restate each fact as its own bullet.
-- Match the register of a working security analyst: direct, specific, no hedging beyond
-  what DERIVED facts require, no filler ("Great question!", "I'd be happy to help").
-- Output ONLY the answer text. No preamble, no meta-commentary about being an AI.
-"""
+from app.prompts import (  # noqa: E402  pylint: disable=wrong-import-position
+    CATEGORY_PRIORITY, PIPELINE_RUBRIC, PIPELINE_SYSTEM_PROMPT, STRICT_RUBRIC,
+    SYSTEM_PROMPT,
+)
 
 # A teacher model call: (system_prompt, rubric, rendered_user_message) -> answer text.
 TeacherFn = Callable[[str, str, str], str]
 
-# --- Copied from app/llm.py, same as SYSTEM_PROMPT above -- see that
-# constant's comment for why this is duplicated rather than imported.
-# pylint: disable=duplicate-code
-
-PIPELINE_SYSTEM_PROMPT = """You are the chat assistant for APT_Watch, a threat-intelligence tool.
-
-The user is asking for a full analyst-style assessment of a threat actor or campaign, not a
-single narrow fact. Answer using ONLY the facts listed below — the same sourcing rules as
-always apply:
-- [DIRECT] — stated outright by MITRE ATT&CK, NVD, or CISA KEV.
-- [DERIVED] — an inferred relationship (a CWE -> CAPEC -> ATT&CK crosswalk, or a name-based
-  correlation between different vendors' reporting on the same activity). Flag every DERIVED
-  fact you use as an inferred correlation, never as a confirmed direct relationship.
-
-Never write a CVE, CWE, CAPEC, technique (T####), mitigation (M####), or group (G####) ID
-that does not appear verbatim in the facts below, even as a guess or example.
-
-Structure your answer under these headings, in this order, using only headings that have
-something to say (omit a heading entirely rather than writing "N/A" or "none found" under
-it — UNLESS the facts explain a specific reason nothing was found, which belongs under
-Unanswered Questions / Gaps, not silently dropped):
-
-Likely Actor(s) — who the facts point to, by name/ID. If different vendors' naming attributes
-the activity to different actor names, say so explicitly rather than picking one arbitrarily —
-an unresolved naming collision is itself the honest answer, not a gap to paper over.
-
-Observed Behavior — what the actor(s) have been documented doing, in plain language.
-
-ATT&CK Techniques — the specific technique IDs involved, each tied to the behavior above.
-
-Supporting Evidence — which facts back each claim, distinguishing DIRECT statements from
-DERIVED correlations.
-
-Confidence — State your confidence (High / Medium / Low) for the actor attribution and for
-any DERIVED claims specifically, not the answer as a whole. Agreement across multiple DIRECT
-facts is High; a single DERIVED correlation, a rejected or ambiguous name match, or facts that
-conflict with each other is Low.
-
-IOCs — any indicators available, marked confirmed vs. name-correlated per the facts.
-
-Detections — any detection or coverage facts available.
-
-Mitigations — MITRE ATT&CK mitigations that address the techniques identified above.
-
-Unanswered Questions / Gaps — what the facts do NOT establish. Always include this section: a
-genuine gap (an unresolved naming collision, a crosswalk dead end, a technique with no
-mitigation on file) is a normal, useful answer, not a failure to hide.
-
-If the facts below do not answer the question at all, say so plainly under Likely Actor(s) and
-skip the remaining headings — do not guess, and do not use any knowledge beyond the facts
-listed."""
-
-PIPELINE_RUBRIC = """You are generating a TRAINING EXAMPLE, not a live chat reply. Given a
-QUESTION and a numbered FACTS list (each already tagged [DIRECT] or [DERIVED]), write the
-full structured assessment PIPELINE_SYSTEM_PROMPT asks for (it will be included above this
-message), using every heading that has something to say. Additional rules specific to
-generating training data:
-
-- When facts attribute overlapping activity to different actor names (a documented naming
-  collision), name that ambiguity explicitly under Likely Actor(s) -- do not silently pick
-  one name as if it were settled.
-- Under Confidence, justify the level you give: agreement across multiple DIRECT facts is
-  High; a lone DERIVED correlation, a rejected/ambiguous name match, or conflicting facts is
-  Low. Do not default to "Medium" as a hedge.
-- Under Unanswered Questions / Gaps, name at least one concrete thing the facts do not
-  establish -- a real gap is a normal, expected part of a good assessment, not a failure to
-  avoid mentioning.
-- Output ONLY the answer text, headings included. No preamble, no meta-commentary about
-  being an AI.
-"""
-
-# Scenario tags that use PIPELINE_SYSTEM_PROMPT/PIPELINE_RUBRIC instead of
-# SYSTEM_PROMPT/STRICT_RUBRIC -- matching app/chat.py's own trigger (an
-# open-ended actor/campaign assessment question), not every conflicting-
-# evidence scenario. A narrow question can still have conflicting facts to
-# weigh (see scenario_conflicting_attribution etc. below); it should still
-# get a concise, honestly-hedged answer, not the full nine-heading format.
 PIPELINE_SCENARIO_TAGS = {"full_pipeline_assessment"}
 
 # --- Synthetic-but-real reference pools ------------------------------------

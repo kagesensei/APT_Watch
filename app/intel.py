@@ -12,6 +12,7 @@ relationship" caveat.
 import re
 from datetime import datetime, timezone
 from typing import TypedDict
+from typing_extensions import NotRequired
 
 import duckdb
 import requests
@@ -19,6 +20,7 @@ import requests
 from contracts import not_none, postcondition, precondition
 
 from . import queries
+from .sigma_facts import actor_facts as sigma_actor_facts
 
 NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 KEV_CATALOG_URL = "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"
@@ -45,6 +47,7 @@ class Fact(TypedDict):
     derived: bool
     category: str
     source: Source
+    evidence_kind: NotRequired[str]
 
 
 class NvdResult(TypedDict):
@@ -818,6 +821,75 @@ def lookup_naming_term(
     return facts, dedup_sources(facts)
 
 
+def _actor_identity_facts(
+    stix_id: str, attack_id: str, name: str, db: duckdb.DuckDBPyConnection
+) -> list[Fact]:
+    available, identity_rows = queries.actor_identity_evidence(db, stix_id)
+    if not available:
+        return [{
+            "text": (
+                "Cross-vendor actor identity and collision evidence is unavailable "
+                "because required resolver tables are missing."
+            ),
+            "derived": False, "category": "naming_note", "evidence_kind": "GAP",
+            "source": _source("APT_Watch", attack_id or stix_id, name, None),
+        }]
+    facts: list[Fact] = []
+    for identity in identity_rows:
+        facts.append(_identity_fact(identity, attack_id, stix_id, name))
+    return facts
+
+
+def _identity_fact(
+    identity: queries.ActorIdentityEvidence, attack_id: str, stix_id: str, actor_name: str
+) -> Fact:
+    labels = {
+        "exact": "LEXICAL SIMILARITY", "collision": "LEXICAL SIMILARITY",
+        "candidate": "LEXICAL SIMILARITY", "manual": "ANALYST REVIEW",
+        "rejected": "ANALYST REVIEW", "unmatched": "GAP",
+    }
+    descriptions = {
+        "exact": "mutual one-to-one exact normalized alias match",
+        "collision": "exact alias match with a one-to-many or many-to-one naming collision",
+        "candidate": "unresolved fuzzy name candidate",
+        "manual": "manually promoted crosswalk decision",
+        "rejected": "manually rejected crosswalk candidate",
+        "unmatched": "no stored exact, reviewed, rejected, or fuzzy crosswalk evidence",
+    }
+    status = identity["status"]
+    detail = f"{descriptions[status]}: ATT&CK {identity['attack_name']}"
+    if identity["misp_name"]:
+        detail += f" ↔ MISP {identity['misp_name']}"
+    if status in {"exact", "collision", "candidate"}:
+        detail += (
+            ". This is lexical correspondence only, not attribution evidence "
+            "or proof of actor identity."
+        )
+    if identity["match_score"] is not None:
+        detail += f" Lexical match score: {identity['match_score']}."
+    if identity["shared_aliases"]:
+        detail += " Shared aliases: " + ", ".join(identity["shared_aliases"]) + "."
+    if identity["other_attack_names"]:
+        names = ", ".join(identity["other_attack_names"])
+        detail += " Other ATT&CK names sharing the MISP match: " + names + "."
+    if identity["reason"]:
+        detail += f" Review reasoning: {identity['reason']}"
+    if identity["reviewed"]:
+        detail += f" Reviewed: {identity['reviewed']}."
+    if identity["retrieved"]:
+        detail += f" MISP source retrieved {identity['retrieved']}."
+    if identity["review_sources"]:
+        detail += " Review sources: " + ", ".join(identity["review_sources"]) + "."
+    return {
+        "text": detail, "derived": False, "category": "actor_identity",
+        "evidence_kind": labels[status],
+        "source": _source(
+            "APT_Watch", identity["misp_uuid"] or attack_id or stix_id,
+            identity["misp_name"] or actor_name, identity["source_url"],
+        ),
+    }
+
+
 def lookup_actor(stix_id: str, db: duckdb.DuckDBPyConnection) -> tuple[list[Fact], list[Source]]:
     """Techniques, software, and naming-convention notes for one actor."""
     precondition(bool(stix_id), "stix_id must not be empty")
@@ -829,7 +901,7 @@ def lookup_actor(stix_id: str, db: duckdb.DuckDBPyConnection) -> tuple[list[Fact
     attack_id, name, aliases_field = actor_row
     aliases = parse_aliases(aliases_field)
 
-    facts: list[Fact] = []
+    facts = _actor_identity_facts(stix_id, attack_id, name, db)
     facts.extend(naming_convention_facts(aliases, db))
     facts.extend(alias_note_facts(attack_id, db))
 
@@ -850,6 +922,23 @@ def lookup_actor(stix_id: str, db: duckdb.DuckDBPyConnection) -> tuple[list[Fact
                 "MITRE ATT&CK", technique_id, technique_name, technique_url(technique_id)
             ),
         })
+        mitigation_rows = db.execute(
+            "SELECT DISTINCT mitigation_id, mitigation_name FROM technique_mitigation "
+            "WHERE technique_id = ?",
+            [technique_id],
+        ).fetchall()
+        for mitigation_id, mitigation_name in mitigation_rows:
+            facts.append({
+                "text": (
+                    f"MITRE ATT&CK lists mitigation {mitigation_id} ({mitigation_name}) "
+                    f"for technique {technique_id}, which ATT&CK documents {name} as using."
+                ),
+                "derived": False, "category": "mitigation",
+                "source": _source("MITRE ATT&CK", mitigation_id, mitigation_name,
+                                   mitigation_url(mitigation_id)),
+            })
+
+    facts.extend(sigma_actor_facts(attack_id, db, _source))
 
     software = db.execute(
         "SELECT DISTINCT software_id, software_name, software_type FROM actor_software "

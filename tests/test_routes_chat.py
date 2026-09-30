@@ -153,6 +153,31 @@ class TestPipelineTrigger:
         resp = client.post("/ask", json={"message": f"Give me a full assessment of {actor_name}"})
         assert resp.status_code == 200
         assert captured["pipeline"] is True
+
+    def test_assessment_uses_bounded_actor_evidence_retrieval(self, client, db, monkeypatch):
+        actor_name = self._actor_name(db)
+        captured = {}
+
+        def fake_lookup(stix_id, connection):
+            captured["stix_id"] = stix_id
+            return ([{
+                "text": "Retrieved evidence gap.", "derived": False,
+                "category": "assessment_gap", "evidence_kind": "GAP",
+                "source": {"dataset": "APT_Watch", "id": "G0000", "name": "gap", "url": None},
+            }], [])
+
+        def fake_answer(question, facts, pipeline=False):
+            captured["facts"] = facts
+            captured["pipeline"] = pipeline
+            return "assessment"
+
+        monkeypatch.setattr(chat_module.actor_assessment, "lookup", fake_lookup)
+        monkeypatch.setattr(chat_module.llm, "answer", fake_answer)
+        resp = client.post("/ask", json={"message": f"Give me a full assessment of {actor_name}"})
+        assert resp.status_code == 200
+        assert captured["stix_id"]
+        assert captured["facts"][0]["evidence_kind"] == "GAP"
+        assert captured["pipeline"] is True
         assert resp.get_json()["pipeline"] is True
 
     def test_actor_named_without_assessment_phrasing_stays_narrow(self, client, db, monkeypatch):

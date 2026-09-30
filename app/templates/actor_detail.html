@@ -8,6 +8,34 @@
 <p class="meta">Aliases: {{ actor[3].replace(';', ', ') }}</p>
 {% endif %}
 
+<h2>Cross-vendor name evidence</h2>
+<p>Names and aliases help find candidates; lexical similarity is not attribution evidence or proof of shared identity.</p>
+{% if not identity_available %}
+<p class="empty">Cross-vendor match and collision records are unavailable because required resolver tables are missing. Collision data was not read from the generated report.</p>
+{% elif identity_evidence %}
+<ul>
+  {% for item in identity_evidence %}
+  <li>
+    <strong>{{ {'exact': 'Mutual one-to-one exact normalized alias match', 'manual': 'Manually promoted match', 'rejected': 'Manually rejected candidate', 'candidate': 'Unresolved fuzzy candidate', 'collision': 'Naming collision', 'unmatched': 'Unmatched actor'}[item.status] }}</strong>
+    {% if item.misp_name %} — ATT&amp;CK {{ item.attack_name }} / {{ item.attack_id }} ↔ MISP {{ item.misp_name }}{% endif %}
+    {% if item.match_score is not none %}<span class="meta">(lexical score {{ item.match_score }})</span>{% endif %}
+    {% if item.shared_aliases %}<div>Shared alias pairs: {{ item.shared_aliases|join('; ') }}</div>{% endif %}
+    {% if item.other_attack_names %}<div>Other ATT&amp;CK names sharing the MISP match: {{ item.other_attack_names|join(', ') }}</div>{% endif %}
+    {% if item.reason %}<div>Review reasoning: {{ item.reason }}</div>{% endif %}
+    {% if item.reviewed %}<div>Reviewed: {{ item.reviewed }}</div>{% endif %}
+    {% if item.source_url %}<div>Source: <a href="{{ item.source_url }}" rel="noopener noreferrer">{{ item.source_url }}</a>{% if item.retrieved %} (retrieved {{ item.retrieved }}){% endif %}</div>{% endif %}
+    {% if item.review_sources %}<div>Review sources: {% for source in item.review_sources %}<a href="{{ source }}" rel="noopener noreferrer">{{ source }}</a>{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
+    {% if item.status in ['exact', 'collision', 'candidate'] %}<div>Lexical correspondence only; it does not establish attribution.</div>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h2>Sigma rule-author tag coverage</h2>
+<p>These mappings come from Sigma rule tags supplied by rule authors. They are not MITRE-confirmed detection coverage and do not prove a rule detects activity in your environment.</p>
+<p>{{ sigma_coverage.covered_technique_count }} documented technique(s) have one or more ingested author-tagged Sigma rules; {{ sigma_coverage.uncovered_technique_count }} have no ingested Sigma rule tag. An absent ingested rule does not prove no detection exists. {{ sigma_coverage.untagged_rule_count }} ingested rule(s) lack ATT&amp;CK technique tags.</p>
+{% if sigma_coverage.rules %}<ul>{% for rule in sigma_coverage.rules %}<li><a href="{{ rule.source_url }}" rel="noopener noreferrer">{{ rule.rule_id }} — {{ rule.title }}</a> tags {{ rule.technique_id }} ({{ rule.level }}; retrieved {{ rule.retrieved }})</li>{% endfor %}</ul>{% else %}<p class="empty">No ingested Sigma rule is tagged by its author for this actor's documented techniques.</p>{% endif %}
+
 {% if naming_facts %}
 <h2>What the names mean</h2>
 <ul class="pill-list">

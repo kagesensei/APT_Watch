@@ -94,7 +94,8 @@ and merged:
   TTP-to-mitigation/detection mapping; and enterprise-specific defensive
   prioritization through chat and data-science workflows. Continuous live
   activity feeds are not inherently required. See the
-  [core threat-intelligence to-do](THREAT_INTELLIGENCE_ROADMAP.md).
+  [core threat-intelligence to-do](THREAT_INTELLIGENCE_ROADMAP.md) and
+  [initial source catalogue/update plan](THREAT_INTELLIGENCE_SOURCES.md).
 - Security hardening across the app, endpoints, notebooks, and agents:
   federated sign-in, OAuth/OIDC, PKI/mTLS, zero-trust access, encryption at
   rest and in transit, and feasible FIPS 203/204/205 PQC adoption.

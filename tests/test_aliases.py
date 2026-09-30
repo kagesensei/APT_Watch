@@ -1,10 +1,12 @@
 import json
 
 import aliases
+import alias_matching
 import duckdb
 import pytest
 
 from conftest import FIXTURES_DIR
+from app import queries
 
 SOURCE_URL = "https://example.com/misp-fixture"
 RETRIEVED = "2026-09-14"
@@ -60,11 +62,15 @@ def resolve_db() -> duckdb.DuckDBPyConnection:
 
 class TestNormalize:
     def test_lowercases_strips_whitespace_and_punctuation(self):
-        assert aliases.normalize("  APT-1  ") == "apt1"
-        assert aliases.normalize("PLA Unit 61398") == "plaunit61398"
+        assert alias_matching.normalize("  APT-1  ") == "apt1"
+        assert alias_matching.normalize("PLA Unit 61398") == "plaunit61398"
 
     def test_different_forms_normalize_the_same(self):
-        assert aliases.normalize("APT-1") == aliases.normalize("APT 1") == aliases.normalize("apt1")
+        assert (
+            alias_matching.normalize("APT-1")
+            == alias_matching.normalize("APT 1")
+            == alias_matching.normalize("apt1")
+        )
 
 
 class TestResolveActors:
@@ -111,6 +117,26 @@ class TestResolveActors:
         assert "intrusion-set--gamma" not in xwalk_stix_ids
         assert "intrusion-set--delta" not in xwalk_stix_ids
         assert "intrusion-set--epsilon" not in xwalk_stix_ids
+
+    def test_query_evidence_preserves_exact_collisions_fuzzy_and_unmatched(self, resolve_db):
+        result = aliases.resolve_actors(resolve_db)
+        aliases.write_tables(
+            resolve_db, result["xwalk_rows"], result["candidate_rows"], result["rejected_rows"]
+        )
+        _, exact = queries.actor_identity_evidence(resolve_db, "intrusion-set--alpha")
+        _, attack_collision = queries.actor_identity_evidence(
+            resolve_db, "intrusion-set--gamma"
+        )
+        _, shared_collision = queries.actor_identity_evidence(
+            resolve_db, "intrusion-set--delta"
+        )
+        _, fuzzy = queries.actor_identity_evidence(resolve_db, "intrusion-set--betaa")
+        _, unmatched = queries.actor_identity_evidence(resolve_db, "intrusion-set--zeta")
+        assert any(row["status"] == "exact" for row in exact)
+        assert any(row["status"] == "collision" for row in attack_collision)
+        assert any(row["status"] == "collision" for row in shared_collision)
+        assert any(row["status"] == "candidate" for row in fuzzy)
+        assert unmatched[0]["status"] == "unmatched"
 
 
 class TestQualityChecks:

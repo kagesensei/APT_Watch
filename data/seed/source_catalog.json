@@ -1,0 +1,460 @@
+{
+  "catalog_version": 1,
+  "project_intended_use": "academic_and_personal_noncommercial",
+  "policy": "Project intent does not grant rights to third-party data. Verify each publisher's terms, attribution, retention, and redistribution rules before enabling a source.",
+  "sources": [
+    {
+      "id": "mitre_attack_enterprise",
+      "name": "MITRE ATT&CK Enterprise",
+      "publisher": "MITRE",
+      "kind": "structured_knowledge_base",
+      "covers": [
+        "actors",
+        "campaigns",
+        "techniques",
+        "software",
+        "mitigations"
+      ],
+      "access": "public_machine_readable_STIX",
+      "auth": "none",
+      "refresh_policy": "check_release_or_repository_revision_daily",
+      "status": "implemented_manual_ingest",
+      "terms_status": "review_attribution_and_current_data_terms",
+      "url": "https://attack.mitre.org/resources/working-with-attack/",
+      "ingest_command": "ingest/attack.py",
+      "recommended_profile": "weekly"
+    },
+    {
+      "id": "cisa_kev",
+      "name": "Known Exploited Vulnerabilities Catalog",
+      "publisher": "CISA",
+      "kind": "structured_vulnerability_catalog",
+      "covers": [
+        "cves",
+        "known_exploitation",
+        "remediation_due_dates"
+      ],
+      "access": "public_JSON",
+      "auth": "none",
+      "refresh_policy": "daily_with_conditional_HTTP_when_supported",
+      "status": "implemented_manual_ingest",
+      "terms_status": "verify_attribution_and_data_reuse_terms",
+      "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+      "ingest_command": "ingest/cve.py",
+      "recommended_profile": "daily"
+    },
+    {
+      "id": "nvd_cve_api",
+      "name": "National Vulnerability Database CVE API",
+      "publisher": "NIST",
+      "kind": "structured_vulnerability_database",
+      "covers": [
+        "cves",
+        "cvss",
+        "affected_products",
+        "weaknesses",
+        "change_history"
+      ],
+      "access": "public_API",
+      "auth": "optional_API_key_for_higher_rate_limits",
+      "refresh_policy": "incremental_modified_since_checkpoint_daily",
+      "status": "on_demand_lookup_only",
+      "terms_status": "verify_current_API_and_data_terms",
+      "url": "https://nvd.nist.gov/developers/vulnerabilities"
+    },
+    {
+      "id": "first_epss",
+      "name": "Exploit Prediction Scoring System",
+      "publisher": "FIRST",
+      "kind": "structured_vulnerability_enrichment",
+      "covers": [
+        "cves",
+        "daily_exploitation_probability_estimate"
+      ],
+      "access": "public_API_and_daily_dataset",
+      "auth": "none",
+      "refresh_policy": "daily",
+      "status": "candidate_priority_1",
+      "terms_status": "review_data_license_attribution_and_use",
+      "url": "https://www.first.org/epss/"
+    },
+    {
+      "id": "cisa_vulnrichment",
+      "name": "CISA Vulnrichment / CVE ADP enrichment",
+      "publisher": "CISA",
+      "kind": "structured_vulnerability_enrichment",
+      "covers": [
+        "cves",
+        "ssvc",
+        "weaknesses",
+        "exploitation_evidence"
+      ],
+      "access": "public_CVE_records_and_GitHub_repository",
+      "auth": "none",
+      "refresh_policy": "incremental_CVE_record_updates_daily",
+      "status": "candidate_priority_1",
+      "terms_status": "verify_upstream_CVE_and_repository_terms",
+      "url": "https://github.com/cisagov/vulnrichment"
+    },
+    {
+      "id": "cisa_advisories",
+      "name": "CISA Cybersecurity Advisories and Bulletins",
+      "publisher": "CISA",
+      "kind": "qualitative_advisory_feed",
+      "covers": [
+        "campaigns",
+        "actor_reporting",
+        "ttps",
+        "iocs",
+        "mitigations",
+        "cves"
+      ],
+      "access": "public_RSS_XML_and_web_pages",
+      "auth": "none",
+      "refresh_policy": "hourly",
+      "status": "candidate_priority_1",
+      "terms_status": "verify_site_terms_attribution_and_text_retention",
+      "url": "https://www.cisa.gov/cybersecurity-advisories"
+    },
+    {
+      "id": "uk_ncsc_reports",
+      "name": "UK NCSC Threat Reports and Advisories",
+      "publisher": "UK National Cyber Security Centre",
+      "kind": "qualitative_advisory_feed",
+      "covers": [
+        "campaigns",
+        "actor_reporting",
+        "ttps",
+        "vulnerabilities",
+        "mitigations"
+      ],
+      "access": "public_RSS_and_web_pages",
+      "auth": "none",
+      "refresh_policy": "hourly",
+      "status": "candidate_priority_1",
+      "terms_status": "verify_open_government_license_scope_and_attribution",
+      "url": "https://www.ncsc.gov.uk/information/rss-feeds"
+    },
+    {
+      "id": "au_acsc_advisories",
+      "name": "Australian Signals Directorate ACSC advisories",
+      "publisher": "Australian Signals Directorate",
+      "kind": "qualitative_advisory_feed",
+      "covers": [
+        "campaigns",
+        "actor_reporting",
+        "ttps",
+        "vulnerabilities",
+        "mitigations"
+      ],
+      "access": "public_RSS_and_web_pages",
+      "auth": "none",
+      "refresh_policy": "hourly",
+      "status": "candidate_priority_1",
+      "terms_status": "verify_publisher_terms_and_attribution",
+      "url": "https://www.cyber.gov.au/about-us/about-asdacsc/who-we-are/ACSC-social-media-community"
+    },
+    {
+      "id": "ca_cccs_advisories",
+      "name": "Canadian Centre for Cyber Security alerts and advisories",
+      "publisher": "Communications Security Establishment Canada",
+      "kind": "qualitative_advisory_feed",
+      "covers": [
+        "campaigns",
+        "actor_reporting",
+        "ttps",
+        "vulnerabilities",
+        "mitigations"
+      ],
+      "access": "public_web_feed",
+      "auth": "none",
+      "refresh_policy": "hourly",
+      "status": "candidate_priority_1",
+      "terms_status": "verify_publisher_terms_and_attribution",
+      "url": "https://www.cyber.gc.ca/en/alerts-advisories"
+    },
+    {
+      "id": "nz_ncsc_reports",
+      "name": "New Zealand NCSC cyber threat reports and advisories",
+      "publisher": "New Zealand National Cyber Security Centre",
+      "kind": "qualitative_advisory_feed",
+      "covers": [
+        "campaigns",
+        "actor_reporting",
+        "ttps",
+        "vulnerabilities",
+        "mitigations"
+      ],
+      "access": "public_RSS_and_web_pages",
+      "auth": "none",
+      "refresh_policy": "hourly",
+      "status": "candidate_priority_1",
+      "terms_status": "verify_publisher_terms_and_attribution",
+      "url": "https://www.ncsc.govt.nz/news/category/cyber-threat-reports/rss"
+    },
+    {
+      "id": "misp_galaxy",
+      "name": "MISP Galaxy threat actors",
+      "publisher": "MISP Project",
+      "kind": "structured_entity_catalog",
+      "covers": [
+        "actors",
+        "aliases",
+        "country_attribution",
+        "references"
+      ],
+      "access": "public_Git_repository",
+      "auth": "none",
+      "refresh_policy": "daily_or_on_repository_revision",
+      "status": "implemented_manual_ingest",
+      "terms_status": "review_repository_license_and_per_record_references",
+      "url": "https://github.com/MISP/misp-galaxy",
+      "ingest_command": "ingest/misp_galaxy.py",
+      "recommended_profile": "daily"
+    },
+    {
+      "id": "misp_circl_osint",
+      "name": "CIRCL OSINT MISP feed",
+      "publisher": "CIRCL",
+      "kind": "structured_threat_events",
+      "covers": [
+        "campaigns",
+        "actors",
+        "malware",
+        "iocs",
+        "references"
+      ],
+      "access": "public_MISP_feed",
+      "auth": "none",
+      "refresh_policy": "daily",
+      "status": "candidate_priority_2",
+      "terms_status": "review_feed_terms_and_event_level_tlp",
+      "url": "https://www.circl.lu/doc/misp/feed-osint/"
+    },
+    {
+      "id": "misp_botvrij",
+      "name": "Botvrij.eu OSINT MISP feed",
+      "publisher": "Botvrij.eu",
+      "kind": "structured_threat_events",
+      "covers": [
+        "campaigns",
+        "iocs",
+        "references"
+      ],
+      "access": "public_MISP_feed",
+      "auth": "none",
+      "refresh_policy": "daily",
+      "status": "candidate_priority_2",
+      "terms_status": "review_feed_terms_and_event_level_tlp",
+      "url": "https://www.botvrij.eu/data/feed-osint"
+    },
+    {
+      "id": "abusech_urlhaus",
+      "name": "URLhaus",
+      "publisher": "abuse.ch / Spamhaus",
+      "kind": "ioc_feed",
+      "covers": [
+        "malware_distribution_urls",
+        "payloads",
+        "tags"
+      ],
+      "access": "public_feed_and_authenticated_API_options",
+      "auth": "endpoint_dependent_check_current_API",
+      "refresh_policy": "daily_with_revocation_and_expiration_handling",
+      "status": "implemented_manual_ingest_verify_current_endpoint",
+      "terms_status": "verify_current_abusech_terms_and_API_requirements",
+      "url": "https://urlhaus.abuse.ch/api/",
+      "ingest_command": "ingest/ioc.py",
+      "recommended_profile": "daily"
+    },
+    {
+      "id": "abusech_threatfox",
+      "name": "ThreatFox",
+      "publisher": "abuse.ch / Spamhaus",
+      "kind": "ioc_feed",
+      "covers": [
+        "iocs",
+        "malware_family_relationships",
+        "sightings"
+      ],
+      "access": "public_feed_and_authenticated_API_options",
+      "auth": "endpoint_dependent_check_current_API",
+      "refresh_policy": "hourly_with_expiration_and_revocation_handling",
+      "status": "candidate_priority_2_verify_current_endpoint",
+      "terms_status": "verify_current_abusech_terms_and_API_requirements",
+      "url": "https://threatfox.abuse.ch/",
+      "recommended_profile": "daily"
+    },
+    {
+      "id": "abusech_malwarebazaar",
+      "name": "MalwareBazaar",
+      "publisher": "abuse.ch / Spamhaus",
+      "kind": "malware_hash_feed",
+      "covers": [
+        "file_hashes",
+        "malware_families",
+        "first_seen"
+      ],
+      "access": "public_feed_and_authenticated_API_options",
+      "auth": "endpoint_dependent_check_current_API",
+      "refresh_policy": "daily_for_metadata_never_download_samples_by_default",
+      "status": "implemented_manual_ingest_verify_current_endpoint",
+      "terms_status": "verify_current_abusech_terms; sample_downloads_are_separate",
+      "url": "https://bazaar.abuse.ch/api/",
+      "ingest_command": "ingest/ioc.py",
+      "recommended_profile": "daily"
+    },
+    {
+      "id": "abusech_feodo_tracker",
+      "name": "Feodo Tracker",
+      "publisher": "abuse.ch / Spamhaus",
+      "kind": "ioc_feed",
+      "covers": [
+        "botnet_c2",
+        "malware_family",
+        "last_online",
+        "status"
+      ],
+      "access": "public_feed_and_authenticated_API_options",
+      "auth": "endpoint_dependent_check_current_API",
+      "refresh_policy": "daily_and_honor_last_online_and_status",
+      "status": "implemented_manual_ingest_verify_current_endpoint",
+      "terms_status": "verify_current_abusech_terms_and_API_requirements",
+      "url": "https://feodotracker.abuse.ch/",
+      "ingest_command": "ingest/ioc.py",
+      "recommended_profile": "daily"
+    },
+    {
+      "id": "threatcluster_public_feeds",
+      "name": "ThreatCluster public RSS and IOC feeds",
+      "publisher": "ThreatCluster",
+      "kind": "incident_and_ioc_feeds",
+      "covers": [
+        "incidents",
+        "reported_actor_activity",
+        "cves",
+        "exploits",
+        "ransomware_claims",
+        "iocs"
+      ],
+      "access": "public_no_key_RSS_and_IOC; keyed_API_has_free_quota_and_short_lookback",
+      "auth": "none_for_public_feeds; API_key_for_extended_records",
+      "refresh_policy": "at_most_hourly_as_publisher_cache_is_hourly",
+      "status": "candidate_priority_1_evaluate_coverage_and_provenance",
+      "terms_status": "verify_endpoint_specific_license_attribution_and_noncommercial_use_before_ingest_or_redistribution",
+      "url": "https://threatcluster.io/feeds"
+    },
+    {
+      "id": "virustotal_public_api",
+      "name": "VirusTotal public API",
+      "publisher": "VirusTotal (Google subsidiary; related but distinct from Mandiant products)",
+      "kind": "on_demand_ioc_enrichment_not_bulk_feed",
+      "covers": [
+        "hash_lookup",
+        "url_lookup",
+        "domain_lookup",
+        "ip_lookup"
+      ],
+      "access": "personal_API_key; documented_public_API_for_free_to_consumer_noncommercial_or_academic_use",
+      "auth": "user_supplied_secret_never_store_in_repository",
+      "refresh_policy": "on_demand_only_respect_documented_quota",
+      "status": "optional_priority_2_user_key_and_terms_required",
+      "terms_status": "public_API_noncommercial_or_academic_only; 4_requests_per_minute; commercial_and_government_use_requires_private_API",
+      "url": "https://docs.virustotal.com/docs/api-overview"
+    },
+    {
+      "id": "threatq_taxii",
+      "name": "ThreatQ Data Exchange / TAXII",
+      "publisher": "ThreatQuotient",
+      "kind": "user_provided_tip_or_taxii_integration",
+      "covers": [
+        "organization_selected_threat_feeds",
+        "stix_events",
+        "shared_intelligence"
+      ],
+      "access": "requires_customer_authorized_ThreatQ_or_TAXII_endpoint",
+      "auth": "organization_supplied_credentials",
+      "refresh_policy": "configured_by_connector_and_endpoint",
+      "status": "integration_candidate_no_public_free_feed",
+      "terms_status": "requires_customer_license_and_endpoint_authorization",
+      "url": "https://helpcenter.threatq.com/TQX/About_ThreatQ_Data_Exchange.htm"
+    },
+    {
+      "id": "mandiant_threat_intelligence",
+      "name": "Mandiant Threat Intelligence",
+      "publisher": "Google Cloud Mandiant",
+      "kind": "vendor_intelligence_integration",
+      "covers": [
+        "actor_reporting",
+        "campaigns",
+        "vulnerabilities",
+        "ttps",
+        "iocs"
+      ],
+      "access": "public_research_and_advisories; enriched_platform_access_entitlement_dependent",
+      "auth": "subscription_or_user_authorized_API_if_available",
+      "refresh_policy": "public_reporting_review_daily; authenticated_connector_when_licensed",
+      "status": "candidate_preserve_vendor_actor_vocabulary",
+      "terms_status": "review_publication_copyright_and_product_license",
+      "url": "https://cloud.google.com/security/products/mandiant-threat-intelligence"
+    },
+    {
+      "id": "attack_misp_crosswalk",
+      "name": "ATT&CK / MISP reviewed identity crosswalk",
+      "publisher": "APT_Watch derived data",
+      "kind": "derived_relationship_dataset",
+      "covers": [
+        "source_specific_actor_relationships",
+        "exact_names",
+        "analyst_reviewed_matches"
+      ],
+      "access": "local_computation_from_mitre_attack_and_misp_galaxy",
+      "auth": "none",
+      "refresh_policy": "recompute_after_either_parent_source_refreshes",
+      "status": "implemented_manual_step",
+      "terms_status": "inherit_source_terms_and_keep_match_method_provenance",
+      "ingest_command": "resolve/aliases.py",
+      "recommended_profile": "daily",
+      "url": "https://github.com/MISP/misp-galaxy"
+    },
+    {
+      "id": "capec_attack_crosswalk",
+      "name": "CAPEC to CWE and ATT&CK crosswalk",
+      "publisher": "MITRE / APT_Watch derived data",
+      "kind": "structured_attack_pattern_catalog",
+      "covers": [
+        "capec",
+        "cwe",
+        "techniques",
+        "derived_cve_relationships"
+      ],
+      "access": "public_machine_readable_XML",
+      "auth": "none",
+      "refresh_policy": "check_release_or_repository_revision_weekly",
+      "status": "implemented_manual_ingest",
+      "terms_status": "verify_current_MITRE_terms_and_keep_derived_links_labelled",
+      "ingest_command": "ingest/capec.py",
+      "recommended_profile": "weekly",
+      "url": "https://capec.mitre.org/"
+    },
+    {
+      "id": "sigma_rules",
+      "name": "SigmaHQ detection rules",
+      "publisher": "SigmaHQ community",
+      "kind": "structured_detection_rules",
+      "covers": [
+        "detection_rules",
+        "technique_tags",
+        "actor_tags"
+      ],
+      "access": "public_Git_repository",
+      "auth": "none",
+      "refresh_policy": "check_repository_revision_daily",
+      "status": "implemented_manual_ingest",
+      "terms_status": "review_repository_license_and_preserve_rule_attribution",
+      "ingest_command": "ingest/sigma.py",
+      "recommended_profile": "weekly",
+      "url": "https://github.com/SigmaHQ/sigma"
+    }
+  ]
+}

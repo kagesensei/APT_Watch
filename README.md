@@ -6,6 +6,11 @@ actively-exploited CVEs — browsable through a Flask UI, and queryable in
 plain English through a local-LLM chat feature where every answer cites the
 real data it came from.
 
+The project software is licensed for non-commercial use under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). Third-party threat feeds and
+reports retain their own terms; this project license does not grant rights to
+their data.
+
 ## Setup
 
 Requires Python 3.10+.
@@ -21,7 +26,20 @@ pip install -r requirements.txt
 
 ## Data ingest
 
-Run each ingest script once to build `data/cti.duckdb`:
+For a first build or full refresh, run the catalogued updater. It records a
+per-source attempt/success history in DuckDB and continues after a source
+fails so unrelated feeds can still refresh:
+
+```bash
+python ingest/update.py --profile all
+python ingest/status.py
+```
+
+After the first build, schedule `daily` and `weekly` profiles at a time when no
+other process is writing `data/cti.duckdb`. Daily refresh covers KEV, MISP, and
+the bundled IOC feeds; weekly refresh covers ATT&CK, CAPEC, and Sigma. Run a
+full refresh after changing code or bootstrapping a new database. Direct
+per-source scripts below remain available for development:
 
 ```bash
 python ingest/attack.py       # MITRE ATT&CK Enterprise (actors, techniques, software, mitigations)
@@ -127,6 +145,21 @@ MITRE-verified fact:** `sigma_rule_technique`/`sigma_rule_actor` come
 straight from each rule's own `attack.tNNNN`/`attack.gNNNN` tags — useful
 signal, but self-reported by whoever wrote that Sigma rule, not cross-checked
 against ATT&CK's own data the way the CVE crosswalk above is.
+
+Actor pages and actor assessments show mutual one-to-one exact alias matches,
+manually promoted and rejected decisions, unresolved fuzzy candidates,
+one-to-many/many-to-one name collisions and unmatched actors separately.
+Exact or fuzzy name similarity is lexical evidence only, never attribution.
+Collision rows are recomputed from the source alias tables with the resolver's
+exact-match functions; the app does not parse the generated Markdown report.
+Actor and technique pages list Sigma rules by their author-supplied technique
+tags, uncovered techniques and ingested rules with no ATT&CK technique tag.
+No ingested Sigma tag is not proof that no detection exists.
+
+Open-ended actor assessments use a bounded set of retrieved facts. Unsupported
+campaign, IOC, current-activity and victimology areas are stated as intelligence
+gaps rather than filled from the model's general knowledge. The runtime and
+fine-tuning generator share prompts and rubrics from `app/prompts.py`.
 
 Query the result with any DuckDB client, e.g.:
 

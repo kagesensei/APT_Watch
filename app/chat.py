@@ -7,7 +7,7 @@ from flask import Blueprint, Response, abort, jsonify, render_template, request
 
 from contracts import not_none, precondition
 
-from . import chats_store, intel, linkify, llm, nlp, overview
+from . import actor_assessment, chats_store, intel, linkify, llm, nlp, overview
 from .auth import current_user, login_required
 from .cache import get_cache_db
 from .db import get_db
@@ -112,11 +112,17 @@ def ask() -> tuple[Response, int] | Response:
     cache_db = get_cache_db()
     entities = _resolve_entities(message, history, db)
 
-    facts = _facts_for_entities(entities, db, cache_db)
+    pipeline = _wants_pipeline_assessment(message, entities)
+    if pipeline:
+        # Keep an assessment narrow and bounded to one resolved actor; name
+        # matches discovered in retrieved facts remain explicitly lexical.
+        stix_id = entities["actors"][0][0]
+        facts, _sources = actor_assessment.lookup(stix_id, db)
+    else:
+        facts = _facts_for_entities(entities, db, cache_db)
     if not facts:
         facts = _general_overview_facts(message, db)
 
-    pipeline = _wants_pipeline_assessment(message, entities)
     try:
         reply = overview.render_answer(facts)
         if reply is None:

@@ -34,7 +34,6 @@ list, since a reviewed pair shouldn't still look pending.
 import datetime
 import json
 import pathlib
-import re
 import sys
 from typing import TypedDict
 
@@ -52,6 +51,10 @@ for _extra_path in (ROOT, ROOT / "ingest"):
         sys.path.insert(0, str(_extra_path))
 
 import common  # noqa: E402  pylint: disable=wrong-import-position
+from alias_matching import (  # noqa: E402  pylint: disable=wrong-import-position
+    AttackActor, ExactMatchSets, MispAliasRow, build_exact_match_sets,
+    build_normalized_index,
+)
 
 from contracts import precondition  # noqa: E402  pylint: disable=wrong-import-position
 
@@ -60,26 +63,6 @@ MANUAL_REVIEW_PATH = ROOT / "data" / "seed" / "actor_xwalk_manual.json"
 
 FUZZY_THRESHOLD = 90
 VALID_DECISIONS = ("promoted", "rejected")
-
-_NON_ALNUM_RE = re.compile(r"[^a-z0-9]")
-
-
-def normalize(name: str) -> str:
-    """Case/whitespace/punctuation-insensitive form of a name: lowercase
-    with every non-alphanumeric character removed, so "APT-1", "APT 1",
-    and "Apt1" all normalize to "apt1".
-    """
-    return _NON_ALNUM_RE.sub("", name.lower())
-
-
-class AttackActor(TypedDict):
-    """One ATT&CK actor and its full alias set (name + listed aliases)."""
-
-    stix_id: str
-    attack_id: str
-    name: str
-    aliases: list[str]
-
 
 def _split_aliases(aliases_field: str | None) -> list[str]:
     return [a.strip() for a in (aliases_field or "").split(";") if a.strip()]
@@ -100,56 +83,9 @@ def load_attack_actors(db: duckdb.DuckDBPyConnection) -> list[AttackActor]:
     return actors
 
 
-MispAliasRow = tuple[str, str, str, str]  # (misp_uuid, alias, source_url, retrieved)
-
-
 def load_misp_alias_rows(db: duckdb.DuckDBPyConnection) -> list[MispAliasRow]:
     """Every (misp_uuid, alias, source_url, retrieved) row to match against."""
     return db.execute("SELECT misp_uuid, alias, source_url, retrieved FROM actor_alias").fetchall()
-
-
-def build_normalized_index(
-    misp_rows: list[MispAliasRow],
-) -> dict[str, set[str]]:
-    """normalized alias string -> set of misp_uuids that use it (canonical or synonym)."""
-    index: dict[str, set[str]] = {}
-    for misp_uuid, alias, _source_url, _retrieved in misp_rows:
-        index.setdefault(normalize(alias), set()).add(misp_uuid)
-    return index
-
-
-def exact_matches_for_actor(
-    attack_aliases: list[str], normalized_index: dict[str, set[str]]
-) -> set[str]:
-    """Every misp_uuid sharing any normalized alias with this ATT&CK actor."""
-    matched: set[str] = set()
-    for alias in attack_aliases:
-        matched.update(normalized_index.get(normalize(alias), set()))
-    return matched
-
-
-class ExactMatchSets(TypedDict):
-    """The full bipartite exact-match relation, both directions."""
-
-    attack_to_misp: dict[str, set[str]]
-    misp_to_attack: dict[str, set[str]]
-
-
-def build_exact_match_sets(
-    attack_actors: list[AttackActor], normalized_index: dict[str, set[str]]
-) -> ExactMatchSets:
-    """Compute, for every ATT&CK actor, which misp_uuids it exact-matches --
-    and the reverse map -- so 1-to-many/many-to-one cases are visible before
-    anything is written to actor_xwalk.
-    """
-    attack_to_misp: dict[str, set[str]] = {}
-    misp_to_attack: dict[str, set[str]] = {}
-    for actor in attack_actors:
-        matched = exact_matches_for_actor(actor["aliases"], normalized_index)
-        attack_to_misp[actor["stix_id"]] = matched
-        for misp_uuid in matched:
-            misp_to_attack.setdefault(misp_uuid, set()).add(actor["stix_id"])
-    return {"attack_to_misp": attack_to_misp, "misp_to_attack": misp_to_attack}
 
 
 class Classified(TypedDict):

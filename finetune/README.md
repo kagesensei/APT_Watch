@@ -20,12 +20,10 @@ training knowledge -- every claim must cite a retrieved fact, because
 MITRE ATT&CK/CISA KEV data changes constantly and baked-in facts would go
 stale (and reintroduce the exact hallucination risk `_check_for_fabricated_ids`
 exists to catch). So this fine-tune's training data teaches *response
-discipline* against a fact list, never facts themselves: every fact
-template, category name (`naming_note`, `vuln_info`, `mitigation`, `ioc`,
-`actor_usage`, `crosswalk_detail`), and the system prompt itself in
-`generate_sft_examples.py` are copied verbatim from `app/intel.py` and
-`app/llm.py`, so the training format matches exactly what the app sends at
-inference time.
+discipline* against a fact list, never facts themselves. Fact templates and
+category names follow `app/intel.py`. System prompts and teacher rubrics live
+once in `app/prompts.py`; inference and this generator import the same objects
+so the training format cannot drift independently from production.
 
 ## Two prompt shapes, matching the live app exactly
 
@@ -41,10 +39,9 @@ actor entity **and** assessment-intent phrasing (`app/nlp.py`'s
 `ASSESSMENT_INTENT_RE`) -- naming an actor in an otherwise narrow question
 ("what software does APT29 use?") stays on the concise prompt.
 
-This generator mirrors that split exactly: `PIPELINE_SYSTEM_PROMPT` and a
-matching `PIPELINE_RUBRIC` are copied verbatim from `app/llm.py` (same
-duplication rationale as `SYSTEM_PROMPT`), and `prompt_and_rubric_for(tag)`
-picks the right pair per scenario via `PIPELINE_SCENARIO_TAGS`. Training
+This generator mirrors that split exactly: `prompt_and_rubric_for(tag)`
+imports the canonical prompts and rubrics from `app/prompts.py`, then picks
+the right pair per scenario via `PIPELINE_SCENARIO_TAGS`. Training
 data for a pipeline-shaped question needs to *look like* what the app
 actually sends for that kind of question -- otherwise the fine-tune learns
 the wrong response shape for exactly the case it matters most for.

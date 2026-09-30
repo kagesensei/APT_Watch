@@ -79,6 +79,8 @@ def actor_detail(stix_id: str) -> str:
     naming_facts = intel.naming_convention_facts(
         intel.parse_aliases(aliases_field), db
     ) + intel.alias_note_facts(attack_id, db)
+    identity_available, identity_evidence = queries.actor_identity_evidence(db, stix_id)
+    sigma_coverage = queries.sigma_coverage_for_actor(db, attack_id)
 
     return render_template(
         "actor_detail.html",
@@ -86,6 +88,9 @@ def actor_detail(stix_id: str) -> str:
         techniques=actor_techniques,
         software=actor_software,
         naming_facts=naming_facts,
+        identity_available=identity_available,
+        identity_evidence=identity_evidence,
+        sigma_coverage=sigma_coverage,
     )
 
 
@@ -134,6 +139,7 @@ def technique_detail(technique_id: str) -> str:
     ).fetchall()
 
     technique_name = found_name or technique_id
+    sigma_coverage = queries.sigma_coverage_for_technique(db, technique_id)
 
     return render_template(
         "technique_detail.html",
@@ -141,6 +147,7 @@ def technique_detail(technique_id: str) -> str:
         technique_name=technique_name,
         actors=actors_using,
         mitigations=technique_mitigations,
+        sigma_coverage=sigma_coverage,
     )
 
 

@@ -1,4 +1,6 @@
 from app import llm
+from app import prompts
+import generate_sft_examples as sft
 
 
 def _fact(category, entity_id, dataset="APT_Watch", derived=False, text=None):
@@ -56,6 +58,14 @@ class TestFabricationGuard:
 
 
 class TestSystemPromptSelection:
+    def test_runtime_and_training_import_the_same_canonical_prompt_objects(self):
+        assert llm.SYSTEM_PROMPT is prompts.SYSTEM_PROMPT
+        assert llm.PIPELINE_SYSTEM_PROMPT is prompts.PIPELINE_SYSTEM_PROMPT
+        assert sft.SYSTEM_PROMPT is prompts.SYSTEM_PROMPT
+        assert sft.PIPELINE_SYSTEM_PROMPT is prompts.PIPELINE_SYSTEM_PROMPT
+        assert sft.STRICT_RUBRIC is prompts.STRICT_RUBRIC
+        assert sft.PIPELINE_RUBRIC is prompts.PIPELINE_RUBRIC
+
     def test_pipeline_false_selects_the_concise_prompt(self):
         assert llm._system_prompt_for(False) == llm.SYSTEM_PROMPT
 
@@ -99,6 +109,20 @@ class TestBuildContext:
         ]
         context = llm.build_context(facts)
         assert context.index("mitigation fact") < context.index("actor fact")
+
+    def test_assessment_budget_preserves_gaps_and_each_assessment_evidence_tier(self):
+        facts = []
+        for category in llm.ASSESSMENT_CATEGORY_PRIORITY:
+            for number in range(8):
+                fact = _fact(category, f"{category}-{number}", text=f"{category}-{number}")
+                if category == "assessment_gap":
+                    fact["evidence_kind"] = "GAP"
+                facts.append(fact)
+        context = llm.build_context(facts, pipeline=True)
+        assert "[GAP] assessment_gap-0" in context
+        for category in ("actor_identity", "actor_usage", "mitigation", "detection"):
+            assert f"{category}-0" in context
+        assert len(context.splitlines()) == llm.MAX_FACTS + 1
 
     def test_apt_watch_coverage_note_is_sorted_first_within_vuln_info(self):
         facts = [

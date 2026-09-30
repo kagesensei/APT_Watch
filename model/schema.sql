@@ -160,6 +160,74 @@ CREATE TABLE actor_alias_note(
     retrieved DATE            -- when source_url was fetched and checked against this row
 );
 
+-- === Source-specific CTI graph and evidence (foundational model) ===
+-- Preserve each publisher's identity and claim as its own node/edge. Do not
+-- merge a source_entity because names look alike: represent identity, overlap,
+-- subset, disputed, and inferred links as separate evidence-backed claims.
+-- Relationship/claim rows are the graph projection; DuckDB remains the initial
+-- analytical store. Connectors progressively populate these tables.
+
+CREATE TABLE intel_source_entity(
+    source_entity_id VARCHAR PRIMARY KEY, -- local stable key; one per source identity
+    source_id VARCHAR,                    -- key from data/seed/source_catalog.json
+    source_object_id VARCHAR,              -- the source's own ID, nullable for prose-only entities
+    entity_type VARCHAR,                   -- actor | campaign | malware | tool | CVE | technique | infrastructure
+    source_name VARCHAR,                    -- preserve the source's exact name
+    source_url VARCHAR,
+    first_seen_at TIMESTAMPTZ,
+    last_seen_at TIMESTAMPTZ
+);
+
+CREATE TABLE intel_observation(
+    observation_id VARCHAR PRIMARY KEY,
+    source_id VARCHAR,
+    source_object_id VARCHAR,
+    source_url VARCHAR,
+    published_at TIMESTAMPTZ,               -- publisher's report/publication time
+    updated_at TIMESTAMPTZ,                 -- publisher's modification time
+    observed_from TIMESTAMPTZ,              -- event period, when supplied by source
+    observed_to TIMESTAMPTZ,
+    retrieved_at TIMESTAMPTZ,               -- when this collector fetched the object
+    source_revision VARCHAR,                 -- ETag, release, or upstream revision
+    content_sha256 VARCHAR,                  -- identifies changed content without assuming reuse rights
+    handling_label VARCHAR,                  -- TLP or publisher handling instruction, if supplied
+    license_status VARCHAR                   -- reviewed | review_required | restricted; not inherited from repo license
+);
+
+CREATE TABLE intel_claim(
+    claim_id VARCHAR PRIMARY KEY,
+    subject_source_entity_id VARCHAR,
+    predicate VARCHAR,                      -- uses_TTP | exploits_CVE | targets | same_as | overlaps_with | subset_of | disputed
+    object_source_entity_id VARCHAR,         -- null when the source leaves attribution unknown
+    object_value VARCHAR,                    -- preserves an unparsed or not-yet-ID'd object
+    evidence_observation_id VARCHAR,
+    assertion_type VARCHAR,                  -- reported | observed | inferred | analyst_judgment
+    confidence DOUBLE,
+    review_status VARCHAR,                   -- pending | accepted | rejected | disputed
+    valid_from TIMESTAMPTZ,
+    valid_to TIMESTAMPTZ
+);
+
+-- Refresh history created by ingest/update.py. last_success_at is retained
+-- after failures so a failed attempt cannot make a stale source look fresh.
+CREATE TABLE source_run(
+    run_id VARCHAR,
+    source_id VARCHAR,
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    status VARCHAR,
+    exit_code INTEGER,
+    error VARCHAR
+);
+
+CREATE TABLE source_status(
+    source_id VARCHAR PRIMARY KEY,
+    last_attempt_at TIMESTAMPTZ,
+    last_success_at TIMESTAMPTZ,
+    last_status VARCHAR,
+    last_error VARCHAR
+);
+
 -- === MISP Galaxy threat-actor cluster (ingest/misp_galaxy.py) ===
 -- A community-maintained actor list, independent of MITRE ATT&CK's own
 -- group list -- used (see resolve/aliases.py) to cross-reference ATT&CK
